@@ -2,6 +2,41 @@ import type { InvoiceData } from '../types/invoice';
 
 export const initialInvoiceData: InvoiceData = {
   buyer: {
+    buyerName: '',
+    buyerAddress: '',
+    gstinUin: 'Unregistered',
+    accountNo: '',
+    stateAndCode: 'West Bengal (19)',
+  },
+  meta: {
+    invoiceNo: '',
+    dated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-'),
+    placeOfSupply: 'West Bengal (19)',
+    termsOfPayment: 'Immediate / Against Delivery',
+    dispatchMode: 'Local Road Transport',
+    copyType: 'ORIGINAL FOR RECIPIENT',
+  },
+  items: [
+    {
+      id: '1',
+      hsnCode: '64041990',
+      description: '',
+      colorSpec: '',
+      quantity: 0,
+      mrp: 0,
+      unitPrice: 0,
+      discount: '—',
+    },
+  ],
+  charges: {
+    packingCharge: 0,
+  },
+  signatoryName: 'Ujjal Saha',
+};
+
+// Sample footwear invoice data for user reference / reset button
+export const sampleInvoiceData: InvoiceData = {
+  buyer: {
     buyerName: 'Nuruddin Sultan',
     buyerAddress: 'Dalkhola, West Bengal',
     gstinUin: 'Unregistered',
@@ -51,5 +86,5 @@ export const initialInvoiceData: InvoiceData = {
   charges: {
     packingCharge: 103,
   },
-  signatoryName: 'Rishi Saha',
+  signatoryName: 'Ujjal Saha',
 };

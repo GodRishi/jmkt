@@ -218,12 +218,11 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
 
         <div className="space-y-4">
           {data.items.map((item, index) => {
-            const itemTaxable = (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
             return (
               <div key={item.id || index} className="bg-slate-950 border border-slate-800/90 rounded-2xl p-4 space-y-3 hover:border-slate-700 transition-all">
                 <div className="flex items-center justify-between bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-800">
                   <span className="text-xs font-semibold text-emerald-400" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                    # Item {index + 1} &bull; Taxable: ₹{formatCurrency(itemTaxable)}
+                    # Item {index + 1} &bull; Taxable: ₹{formatCurrency(calcs.itemTaxableAmounts[index] || 0)}
                   </span>
                   {data.items.length > 1 && (
                     <button type="button" onClick={() => handleDeleteItem(index)} className="min-h-[40px] px-2.5 py-1 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg text-xs font-medium transition-colors flex items-center gap-1">
@@ -258,7 +257,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
                     <input type="number" inputMode="decimal" step="0.01" value={item.mrp || ''} onChange={(e) => handleItemChange(index, 'mrp', parseFloat(e.target.value) || 0)} placeholder="1549" className="w-full min-h-[48px] px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 placeholder-slate-600 focus:ring-2 focus:ring-emerald-500 text-sm outline-none" style={{ fontFamily: "'JetBrains Mono', monospace" }} />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-slate-400">Discount (%)</label>
+                    <label className="text-[11px] font-medium text-slate-400">Discount (₹ or %)</label>
                     <input type="text" value={item.discount} onChange={(e) => handleItemChange(index, 'discount', e.target.value)} placeholder="—" className="w-full min-h-[48px] px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 placeholder-slate-600 focus:ring-2 focus:ring-emerald-500 text-sm outline-none" />
                   </div>
                 </div>
@@ -284,7 +283,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-300">Authorized Signatory Name</label>
-            <input type="text" value={data.signatoryName || 'Rishi Saha'} onChange={(e) => onChange({ ...data, signatoryName: e.target.value })} placeholder="Rishi Saha" className="w-full min-h-[48px] px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-600 focus:ring-2 focus:ring-emerald-500 text-sm transition-all outline-none" />
+            <input type="text" value={data.signatoryName || 'Ujjal Saha'} onChange={(e) => onChange({ ...data, signatoryName: e.target.value })} placeholder="Ujjal Saha" className="w-full min-h-[48px] px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-600 focus:ring-2 focus:ring-emerald-500 text-sm transition-all outline-none" />
           </div>
         </div>
       </div>

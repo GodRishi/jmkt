@@ -13,8 +13,9 @@ const INVOICE_STANDALONE_CSS = `
     padding: 0;
     background-color: #ffffff;
     color: #000000;
-    font-family: Arial, Helvetica, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     font-size: 11px;
+    -webkit-font-smoothing: antialiased;
   }
   .text-center { text-align: center; }
   .text-left { text-align: left; }
@@ -25,7 +26,7 @@ const INVOICE_STANDALONE_CSS = `
 
   .invoice-template-wrapper {
     background-color: #ffffff;
-    font-family: Arial, Helvetica, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     font-size: 11px;
     color: #000000;
     box-sizing: border-box;
@@ -53,6 +54,8 @@ const INVOICE_STANDALONE_CSS = `
     height: 100%;
     border-collapse: collapse;
     table-layout: fixed;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
   }
 
   .invoice-table td,
@@ -77,31 +80,34 @@ const INVOICE_STANDALONE_CSS = `
     position: absolute;
     right: 12px;
     top: 12px;
-    font-size: 9.5px;
-    font-weight: bold;
-    border: 1px solid #000000;
+    font-size: 9px;
+    font-weight: 800;
+    border: 1.5px solid #000000;
     padding: 3px 8px;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
     text-transform: uppercase;
+    background-color: #ffffff;
+    border-radius: 2px;
   }
 
-  .title-main { font-size: 15px; letter-spacing: 3px; font-weight: bold; margin: 0; }
-  .title-company { font-size: 21px; font-weight: 900; letter-spacing: 0.5px; margin: 4px 0 2px; }
-  .header-subtext { font-size: 10.5px; font-weight: bold; letter-spacing: 0.3px; margin: 2px 0 3px; }
-  .header-contact { font-size: 10.5px; line-height: 1.45; color: #111111; }
+  .title-main { font-size: 14px; letter-spacing: 3.5px; font-weight: 800; margin: 0; text-transform: uppercase; color: #0f172a; }
+  .title-company { font-size: 22px; font-weight: 900; letter-spacing: 0.8px; margin: 4px 0 2px; text-transform: uppercase; color: #000000; }
+  .header-subtext { font-size: 10px; font-weight: 700; letter-spacing: 0.6px; margin: 2px 0 3px; text-transform: uppercase; color: #1e293b; }
+  .header-contact { font-size: 10.5px; line-height: 1.5; color: #111111; }
 
   .meta-cell { vertical-align: top !important; padding: 10px 12px; line-height: 1.6; font-size: 11px; border-top: none !important; }
   .field-row { display: flex; margin-bottom: 3px; }
-  .field-label { font-weight: bold; min-width: 105px; display: inline-block; }
-  .field-val { flex: 1; }
+  .field-label { font-weight: 700; min-width: 110px; display: inline-block; color: #1e293b; }
+  .field-val { flex: 1; color: #000000; }
 
   .item-header {
-    background-color: #f2f2f2;
-    font-weight: bold;
+    background-color: #f8fafc;
+    font-weight: 800;
     text-align: center;
-    font-size: 10.5px;
+    font-size: 10px;
     padding: 8px 4px;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
     border-top: 1.5px solid #000000 !important;
     border-bottom: 1.5px solid #000000 !important;
   }
@@ -114,45 +120,49 @@ const INVOICE_STANDALONE_CSS = `
     line-height: 1.35;
   }
 
-  .desc-title { font-weight: bold; display: block; font-size: 11px; }
-  .desc-sub { font-size: 9.5px; color: #333333; display: block; margin-top: 2px; }
+  .desc-title { font-weight: 700; display: block; font-size: 11px; color: #000000; }
+  .desc-sub { font-size: 9.5px; color: #475569; display: block; margin-top: 2px; font-weight: 500; }
 
   .qty-total-row td {
     border-top: 1.5px solid #000000;
     border-bottom: 1.5px solid #000000;
-    font-weight: bold;
+    font-weight: 800;
     font-size: 11px;
     padding: 7px 8px;
-    background-color: #fafafa;
+    background-color: #f8fafc;
+    letter-spacing: 0.3px;
   }
 
-  .words-cell { vertical-align: top !important; padding: 14px 12px !important; border-left: none !important; border-bottom: none !important; height: 100%; }
-  .words-box { line-height: 1.5; }
-  .signatory-box { margin-top: 50px; text-align: right; font-size: 10.5px; }
-  .signature-name { font-family: 'Brush Script MT', cursive, sans-serif; font-size: 22px; display: block; margin-bottom: 4px; }
+  .words-cell { vertical-align: top !important; padding: 8px 10px !important; border-left: none !important; border-bottom: none !important; height: 100%; }
+  .words-box { line-height: 1.4; }
+  .signatory-box { margin-top: 24px; text-align: right; font-size: 10px; }
+  .signature-name { font-family: 'Brush Script MT', 'Great Vibes', 'Caveat', cursive, sans-serif; font-size: 22px; display: block; margin-bottom: 2px; color: #0f172a; }
 
-  .calc-label-cell { font-weight: bold; text-align: left; font-size: 10.5px; padding: 7px 10px; }
-  .calc-val-cell { text-align: right; font-size: 11px; padding: 7px 10px; white-space: nowrap; }
+  .calc-label-cell { font-weight: 700; text-align: left; font-size: 10px; padding: 5px 8px; letter-spacing: 0.3px; }
+  .calc-val-cell { text-align: right; font-size: 10.5px; padding: 5px 8px; white-space: nowrap; font-weight: 600; }
 
   .grand-total-label, .grand-total-val {
-    font-size: 12px !important;
+    font-size: 11.5px !important;
     font-weight: 900 !important;
-    background-color: #f2f2f2;
+    background-color: #f1f5f9;
     border-top: 1.5px solid #000000 !important;
     border-bottom: 1.5px solid #000000 !important;
-    padding: 9px 10px !important;
+    padding: 7px 8px !important;
+    letter-spacing: 0.5px;
   }
 
   .legal-bar {
     text-align: center;
-    font-size: 9.5px;
-    padding: 6px 4px;
-    background: #fafafa;
+    font-size: 9px;
+    padding: 4px 4px;
+    background: #f8fafc;
     border-top: 1.5px solid #000000 !important;
     border-left: none !important;
     border-right: none !important;
     border-bottom: none !important;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.4px;
+    font-weight: 600;
+    line-height: 1.2;
   }
 `;
 
@@ -223,7 +233,7 @@ export async function exportToPdf(elementId: string, filename: string): Promise<
 
     const imgData = canvas.toDataURL('image/jpeg', 0.98);
     const marginX = (210 - 194) / 2; // 8mm left/right margin
-    const marginY = (297 - 281) / 2; // 8mm top/bottom margin
+    const marginY = 6; // 6mm top margin ensures bottom legal bar fits with margin at bottom
 
     pdf.addImage(imgData, 'JPEG', marginX, marginY, 194, 281);
 

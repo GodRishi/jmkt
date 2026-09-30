@@ -5,7 +5,23 @@ export function calculateInvoiceTotals(data: InvoiceData): InvoiceCalculations {
   const itemTaxableAmounts = data.items.map(item => {
     const qty = Number(item.quantity) || 0;
     const price = Number(item.unitPrice) || 0;
-    return qty * price;
+    const grossTotal = qty * price;
+
+    const discountStr = (item.discount || '').trim();
+    if (!discountStr || discountStr === '—' || discountStr === '-') {
+      return grossTotal;
+    }
+
+    let discountDeduction = 0;
+    if (discountStr.includes('%')) {
+      const pct = parseFloat(discountStr.replace(/[^0-9.]/g, '')) || 0;
+      discountDeduction = (grossTotal * pct) / 100;
+    } else {
+      const amt = parseFloat(discountStr.replace(/[^0-9.]/g, '')) || 0;
+      discountDeduction = amt;
+    }
+
+    return Math.max(0, grossTotal - discountDeduction);
   });
 
   const totalQuantity = data.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);

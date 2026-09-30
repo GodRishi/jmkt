@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { InvoiceData } from './types/invoice';
-import { initialInvoiceData } from './utils/defaultData';
+import { initialInvoiceData, sampleInvoiceData } from './utils/defaultData';
 import { InvoiceForm } from './components/InvoiceForm';
 import { InvoiceTemplate } from './components/InvoiceTemplate';
 import { PreviewModal } from './components/PreviewModal';
@@ -9,7 +9,7 @@ import { exportToPdf } from './utils/pdfExport';
 import { calculateInvoiceTotals } from './utils/calculator';
 import { Sparkles } from 'lucide-react';
 
-const LOCAL_STORAGE_KEY = 'jmkt_invoice_data_v1';
+const LOCAL_STORAGE_KEY = 'jmkt_invoice_data_v3';
 
 export function App() {
   const [data, setData] = useState<InvoiceData>(() => {
@@ -41,7 +41,7 @@ export function App() {
 
   const handleResetSample = () => {
     if (window.confirm('Load sample footwear invoice? Current data will be overwritten.')) {
-      setData(initialInvoiceData);
+      setData(sampleInvoiceData);
       showToast('Sample data loaded!');
     }
   };
@@ -60,7 +60,7 @@ export function App() {
         },
         items: [{ id: '1', hsnCode: '64041990', description: '', colorSpec: '', quantity: 0, mrp: 0, unitPrice: 0, discount: '—' }],
         charges: { packingCharge: 0 },
-        signatoryName: 'Rishi Saha',
+        signatoryName: 'Ujjal Saha',
       });
       showToast('Form cleared.');
     }

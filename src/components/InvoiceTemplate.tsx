@@ -15,14 +15,14 @@ export const InvoiceTemplate: React.FC<InvoiceTemplateProps> = ({ data, id = 'pr
       <div className="invoice-container" id={id}>
         <table className="invoice-table">
           <colgroup>
-            <col style={{ width: '5%' }} />   {/* SL NO */}
-            <col style={{ width: '12%' }} />  {/* HSN */}
-            <col style={{ width: '38%' }} />  {/* DESCRIPTION */}
+            <col style={{ width: '4%' }} />   {/* SL NO */}
+            <col style={{ width: '11%' }} />  {/* HSN */}
+            <col style={{ width: '35%' }} />  {/* DESCRIPTION */}
             <col style={{ width: '7%' }} />   {/* QNTY */}
             <col style={{ width: '9%' }} />   {/* MRP */}
             <col style={{ width: '11%' }} />  {/* PRICE/UNIT */}
             <col style={{ width: '6%' }} />   {/* DISCOUNT */}
-            <col style={{ width: '12%' }} />  {/* AMOUNT */}
+            <col style={{ width: '17%' }} />  {/* AMOUNT */}
           </colgroup>
 
           <thead>
@@ -106,7 +106,7 @@ export const InvoiceTemplate: React.FC<InvoiceTemplateProps> = ({ data, id = 'pr
                 </div>
 
                 <div className="signatory-box">
-                  <span className="signature-name">{data.signatoryName || 'Rishi Saha'}</span>
+                  <span className="signature-name">{data.signatoryName || 'Ujjal Saha'}</span>
                   <strong>For JAI MAA KAMAKHYA TRADERS</strong><br /><br />
                   <span>Authorized Signatory</span>
                 </div>
