@@ -21,14 +21,16 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-neutral-950/50 dark:bg-black/75 backdrop-blur-xs overflow-y-auto">
+      <div className="depth-popover relative w-full max-w-4xl rounded-2xl overflow-hidden flex flex-col max-h-[92vh] transition-colors duration-200">
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-950/60 shrink-0">
+        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-neutral-200/70 dark:border-neutral-800 bg-white dark:bg-[#141416] shrink-0">
           <div>
-            <h3 className="text-lg font-bold text-white font-display">A4 Printable Invoice Preview</h3>
-            <p className="text-xs text-slate-400">
-              Invoice #{data.meta.invoiceNo} &bull; Buyer: {data.buyer.buyerName || 'Client'}
+            <h3 className="text-sm font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
+              A4 Invoice Preview
+            </h3>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono mt-0.5">
+              Invoice #{data.meta.invoiceNo || 'INV'} &bull; Buyer: {data.buyer.buyerName || 'Unassigned'}
             </p>
           </div>
 
@@ -37,34 +39,36 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({
               type="button"
               onClick={onDownloadPdf}
               disabled={isGeneratingPdf}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-lg shadow-emerald-950 transition-all disabled:opacity-50 min-h-[40px]"
+              className="depth-btn-primary h-9 px-3.5 rounded-lg text-xs font-medium flex items-center gap-1.5 disabled:opacity-50"
             >
-              <Download className="w-4 h-4" />
-              <span>{isGeneratingPdf ? 'Exporting...' : 'Download PDF'}</span>
+              <Download className="w-3.5 h-3.5" />
+              <span>{isGeneratingPdf ? 'Generating...' : 'Download PDF'}</span>
             </button>
 
             <button
               type="button"
               onClick={() => window.print()}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium border border-slate-700 transition-all min-h-[40px]"
+              className="depth-btn-secondary h-9 px-3 rounded-lg text-xs font-medium flex items-center gap-1.5"
               title="Print directly"
             >
-              <Printer className="w-4 h-4" />
+              <Printer className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400" />
+              <span className="hidden sm:inline">Print</span>
             </button>
 
             <button
               type="button"
               onClick={onClose}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all min-h-[40px] min-w-[40px] flex items-center justify-center"
+              className="depth-btn-secondary h-9 w-9 rounded-lg flex items-center justify-center text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100"
+              title="Close preview"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
         {/* Modal Body - Scrollable A4 Template preview */}
-        <div className="p-6 sm:p-8 md:p-10 overflow-y-auto bg-slate-950 flex justify-center items-start">
-          <div className="transform scale-[0.55] sm:scale-[0.75] md:scale-[0.9] lg:scale-100 origin-top shadow-2xl rounded-md overflow-hidden bg-white border border-slate-300 my-4 ring-1 ring-slate-700/50 ring-offset-4 ring-offset-slate-950">
+        <div className="p-6 sm:p-8 md:p-10 overflow-y-auto bg-neutral-100/70 dark:bg-[#0c0c0e] flex justify-center items-start">
+          <div className="transform scale-[0.55] sm:scale-[0.75] md:scale-[0.9] lg:scale-100 origin-top shadow-xl rounded-sm overflow-hidden bg-white border border-neutral-300 my-4 ring-1 ring-neutral-900/5">
             <InvoiceTemplate data={data} id="modal-invoice-preview" />
           </div>
         </div>
