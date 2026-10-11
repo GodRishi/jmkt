@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { InvoiceData } from './types/invoice';
 import { initialInvoiceData, sampleInvoiceData } from './utils/defaultData';
 import { InvoiceForm } from './components/InvoiceForm';
+import { MobileInvoiceForm } from './components/MobileInvoiceForm';
 import { InvoiceTemplate } from './components/InvoiceTemplate';
 import { PreviewModal } from './components/PreviewModal';
 import { StickyActionBar } from './components/StickyActionBar';
@@ -148,18 +149,36 @@ export function App() {
       )}
 
       {/* Main Content Container with mobile bottom padding */}
-      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:py-10 pb-28 md:pb-12">
-        <InvoiceForm
-          data={data}
-          onChange={setData}
-          onResetSample={handleResetSample}
-          onClearAll={handleClearAll}
-          onDownloadPdf={handleDownloadPdf}
-          onPreview={() => setIsPreviewOpen(true)}
-          isGeneratingPdf={isGeneratingPdf}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-        />
+      <main className="flex-1 max-w-4xl w-full mx-auto px-3.5 py-4 sm:px-6 sm:py-8 lg:py-10 pb-28 md:pb-12">
+        {/* PC Layout: Untouched desktop interface */}
+        <div className="hidden md:block">
+          <InvoiceForm
+            data={data}
+            onChange={setData}
+            onResetSample={handleResetSample}
+            onClearAll={handleClearAll}
+            onDownloadPdf={handleDownloadPdf}
+            onPreview={() => setIsPreviewOpen(true)}
+            isGeneratingPdf={isGeneratingPdf}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+          />
+        </div>
+
+        {/* Mobile Layout: Specially tailored layout for mobile phones */}
+        <div className="block md:hidden">
+          <MobileInvoiceForm
+            data={data}
+            onChange={setData}
+            onResetSample={handleResetSample}
+            onClearAll={handleClearAll}
+            onDownloadPdf={handleDownloadPdf}
+            onPreview={() => setIsPreviewOpen(true)}
+            isGeneratingPdf={isGeneratingPdf}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+          />
+        </div>
       </main>
 
       {/* Off-screen Invoice Template — preserved exactly for PDF export */}

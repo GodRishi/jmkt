@@ -15,14 +15,14 @@ export const InvoiceTemplate: React.FC<InvoiceTemplateProps> = ({ data, id = 'pr
       <div className="invoice-container" id={id}>
         <table className="invoice-table">
           <colgroup>
-            <col style={{ width: '4%' }} />   {/* SL NO */}
-            <col style={{ width: '11%' }} />  {/* HSN */}
-            <col style={{ width: '35%' }} />  {/* DESCRIPTION */}
-            <col style={{ width: '7%' }} />   {/* QNTY */}
-            <col style={{ width: '9%' }} />   {/* MRP */}
-            <col style={{ width: '11%' }} />  {/* PRICE/UNIT */}
-            <col style={{ width: '6%' }} />   {/* DISCOUNT */}
-            <col style={{ width: '17%' }} />  {/* AMOUNT */}
+            <col style={{ width: '4%' }} />
+            <col style={{ width: '11%' }} />
+            <col style={{ width: '35%' }} />
+            <col style={{ width: '7%' }} />
+            <col style={{ width: '9%' }} />
+            <col style={{ width: '11%' }} />
+            <col style={{ width: '6%' }} />
+            <col style={{ width: '17%' }} />
           </colgroup>
 
           <thead>
