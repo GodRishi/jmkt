@@ -17,6 +17,8 @@ import {
   Layers,
   ChevronDown,
   ChevronUp,
+  BookmarkPlus,
+  CheckCircle,
 } from 'lucide-react';
 
 interface MobileInvoiceFormProps {
@@ -25,10 +27,13 @@ interface MobileInvoiceFormProps {
   onResetSample: () => void;
   onClearAll: () => void;
   onDownloadPdf?: () => void;
+  onSaveToLedgerAndDownload?: () => void;
   onPreview?: () => void;
   isGeneratingPdf?: boolean;
   theme?: 'light' | 'dark';
   onToggleTheme?: () => void;
+  editingLedgerId?: string | null;
+  onCancelEdit?: () => void;
 }
 
 export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
@@ -37,10 +42,13 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
   onResetSample,
   onClearAll,
   onDownloadPdf,
+  onSaveToLedgerAndDownload,
   onPreview,
   isGeneratingPdf = false,
   theme = 'light',
   onToggleTheme,
+  editingLedgerId,
+  onCancelEdit,
 }) => {
   const calcs = calculateInvoiceTotals(data);
 
@@ -136,6 +144,25 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Edit Mode Alert Banner */}
+      {editingLedgerId && (
+        <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200 p-3 rounded-xl flex items-center justify-between text-xs font-medium animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>Editing Ledger Entry #{data.meta.invoiceNo || 'INV'}. Saving updates this record.</span>
+          </div>
+          {onCancelEdit && (
+            <button
+              type="button"
+              onClick={onCancelEdit}
+              className="text-amber-800 dark:text-amber-200 underline hover:opacity-75 font-semibold shrink-0 ml-2"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 2. Mobile Quick Metric Chips */}
       <div className="grid grid-cols-3 gap-2">
@@ -379,11 +406,14 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
               >
                 {/* Item Card Header Bar */}
                 <div className="flex items-center justify-between gap-2 pb-2 border-b border-neutral-200/60 dark:border-neutral-800">
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
                     <span className="w-5 h-5 rounded-full bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 text-[11px] font-mono font-bold flex items-center justify-center shrink-0">
                       {index + 1}
                     </span>
-                    <span className="text-xs font-mono font-medium text-neutral-800 dark:text-neutral-200 truncate">
+                    <span 
+                      className="text-xs font-mono font-medium text-neutral-800 dark:text-neutral-200 truncate min-w-0"
+                      title={`${item.quantity || 0} prs × ₹${item.unitPrice || 0} = ₹${formatCurrency(itemTaxable)}`}
+                    >
                       {item.quantity || 0} prs &times; ₹{item.unitPrice || 0} = <strong className="text-neutral-900 dark:text-neutral-100">₹{formatCurrency(itemTaxable)}</strong>
                     </span>
                   </div>
@@ -583,69 +613,98 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
         </div>
 
         <div className="space-y-1.5 text-xs text-neutral-600 dark:text-neutral-400 pt-1">
-          <div className="flex justify-between py-1">
-            <span>Taxable Value:</span>
-            <span className="font-mono tabular-nums font-medium text-neutral-900 dark:text-neutral-100">
+          <div className="flex justify-between py-1 gap-2 items-baseline">
+            <span className="shrink-0">Taxable Value:</span>
+            <span className="font-mono tabular-nums font-medium text-neutral-900 dark:text-neutral-100 text-right break-all min-w-0">
               ₹{formatCurrency(calcs.totalTaxableValue)}
             </span>
           </div>
 
-          <div className="flex justify-between py-1">
-            <span>Packing Charge:</span>
-            <span className="font-mono tabular-nums font-medium text-neutral-900 dark:text-neutral-100">
+          <div className="flex justify-between py-1 gap-2 items-baseline">
+            <span className="shrink-0">Packing Charge:</span>
+            <span className="font-mono tabular-nums font-medium text-neutral-900 dark:text-neutral-100 text-right break-all min-w-0">
               ₹{formatCurrency(calcs.packingCharge)}
             </span>
           </div>
 
-          <div className="flex justify-between py-1">
-            <span>CGST @ 2.5%:</span>
-            <span className="font-mono tabular-nums font-medium text-neutral-900 dark:text-neutral-100">
+          <div className="flex justify-between py-1 gap-2 items-baseline">
+            <span className="shrink-0">CGST @ 2.5%:</span>
+            <span className="font-mono tabular-nums font-medium text-neutral-900 dark:text-neutral-100 text-right break-all min-w-0">
               ₹{formatCurrency(calcs.cgst)}
             </span>
           </div>
 
-          <div className="flex justify-between py-1">
-            <span>SGST @ 2.5%:</span>
-            <span className="font-mono tabular-nums font-medium text-neutral-900 dark:text-neutral-100">
+          <div className="flex justify-between py-1 gap-2 items-baseline">
+            <span className="shrink-0">SGST @ 2.5%:</span>
+            <span className="font-mono tabular-nums font-medium text-neutral-900 dark:text-neutral-100 text-right break-all min-w-0">
               ₹{formatCurrency(calcs.sgst)}
             </span>
           </div>
 
-          <div className="flex justify-between py-1 text-neutral-400 dark:text-neutral-500">
-            <span>Round Off:</span>
-            <span className="font-mono tabular-nums text-neutral-600 dark:text-neutral-400">
+          <div className="flex justify-between py-1 gap-2 items-baseline text-neutral-400 dark:text-neutral-500">
+            <span className="shrink-0">Round Off:</span>
+            <span className="font-mono tabular-nums text-neutral-600 dark:text-neutral-400 text-right break-all min-w-0">
               {calcs.roundOff}
             </span>
           </div>
 
-          <div className="border-t border-neutral-200 dark:border-neutral-800 my-2 pt-2.5 flex justify-between items-baseline">
-            <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Grand Total:</span>
-            <span className="text-2xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100 font-mono tabular-nums">
+          <div className="border-t border-neutral-200 dark:border-neutral-800 my-2 pt-2.5 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+            <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 shrink-0">Grand Total:</span>
+            <span 
+              className={`font-bold tracking-tight text-neutral-900 dark:text-neutral-100 font-mono tabular-nums text-right break-all min-w-0 ${
+                formatCurrency(calcs.grandTotal).length > 15
+                  ? 'text-lg'
+                  : formatCurrency(calcs.grandTotal).length > 11
+                  ? 'text-xl'
+                  : 'text-2xl'
+              }`}
+            >
               ₹{formatCurrency(calcs.grandTotal)}
             </span>
           </div>
         </div>
 
-        {/* Quick in-page action buttons for mobile */}
+        {/* Quick in-page action buttons for mobile (Stacked primary button, 50/50 secondary grid) */}
         {onDownloadPdf && onPreview && (
-          <div className="grid grid-cols-2 gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onPreview}
-              className="depth-btn-secondary h-11 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5"
-            >
-              <Eye className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
-              <span>Preview</span>
-            </button>
-            <button
-              type="button"
-              onClick={onDownloadPdf}
-              disabled={isGeneratingPdf}
-              className="depth-btn-primary h-11 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50"
-            >
-              <Download className="w-4 h-4" />
-              <span>{isGeneratingPdf ? 'Generating...' : 'Download PDF'}</span>
-            </button>
+          <div className="space-y-2 pt-2 border-t border-neutral-100 dark:border-neutral-800/80">
+            {onSaveToLedgerAndDownload && (
+              <button
+                type="button"
+                onClick={onSaveToLedgerAndDownload}
+                disabled={isGeneratingPdf}
+                className="depth-btn-primary w-full h-11 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 disabled:opacity-50 transition-all active:scale-[0.99]"
+                title="Log bill in accounts ledger and download PDF"
+              >
+                <BookmarkPlus className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="truncate">
+                  {isGeneratingPdf
+                    ? 'Generating PDF...'
+                    : (editingLedgerId ? 'Update & Download PDF' : 'Save to Ledger & Download')}
+                </span>
+              </button>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={onDownloadPdf}
+                disabled={isGeneratingPdf}
+                className="depth-btn-secondary h-10 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50 transition-colors"
+                title="Download PDF immediately without saving to accounts"
+              >
+                <Download className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300 shrink-0" />
+                <span className="truncate">Download PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onPreview}
+                className="depth-btn-secondary h-10 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <Eye className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300 shrink-0" />
+                <span>Preview</span>
+              </button>
+            </div>
           </div>
         )}
       </section>

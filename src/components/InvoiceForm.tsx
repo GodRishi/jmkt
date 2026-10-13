@@ -13,6 +13,8 @@ import {
   Eye,
   Sun,
   Moon,
+  BookmarkPlus,
+  CheckCircle,
 } from 'lucide-react';
 
 interface InvoiceFormProps {
@@ -21,10 +23,13 @@ interface InvoiceFormProps {
   onResetSample: () => void;
   onClearAll: () => void;
   onDownloadPdf?: () => void;
+  onSaveToLedgerAndDownload?: () => void;
   onPreview?: () => void;
   isGeneratingPdf?: boolean;
   theme?: 'light' | 'dark';
   onToggleTheme?: () => void;
+  editingLedgerId?: string | null;
+  onCancelEdit?: () => void;
 }
 
 export const InvoiceForm: React.FC<InvoiceFormProps> = ({
@@ -33,10 +38,13 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
   onResetSample,
   onClearAll,
   onDownloadPdf,
+  onSaveToLedgerAndDownload,
   onPreview,
   isGeneratingPdf = false,
   theme = 'light',
   onToggleTheme,
+  editingLedgerId,
+  onCancelEdit,
 }) => {
   const calcs = calculateInvoiceTotals(data);
 
@@ -135,6 +143,25 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
           </button>
         </div>
       </header>
+
+      {/* Edit Mode Alert Banner */}
+      {editingLedgerId && (
+        <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200 px-4 py-2.5 rounded-xl flex items-center justify-between text-xs font-medium animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>Editing Ledger Entry #{data.meta.invoiceNo || 'INV'}. Saving will update the existing ledger record.</span>
+          </div>
+          {onCancelEdit && (
+            <button
+              type="button"
+              onClick={onCancelEdit}
+              className="text-amber-800 dark:text-amber-200 underline hover:opacity-75 ml-3 font-semibold shrink-0"
+            >
+              Cancel Edit
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 2. Buyer & Invoice Information (2-Column Grid) */}
       <section className="depth-card rounded-xl p-5 sm:p-6 space-y-6">
@@ -334,11 +361,14 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               >
                 {/* Item Card Header */}
                 <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-neutral-200/60 dark:border-neutral-800">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400 font-mono">
+                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                    <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400 font-mono shrink-0">
                       #{index + 1}
                     </span>
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded bg-white dark:bg-neutral-800 border border-neutral-200/80 dark:border-neutral-700 text-xs font-mono font-medium text-neutral-800 dark:text-neutral-200 shadow-xs">
+                    <span 
+                      className="inline-flex items-center px-2.5 py-0.5 rounded bg-white dark:bg-neutral-800 border border-neutral-200/80 dark:border-neutral-700 text-xs font-mono font-medium text-neutral-800 dark:text-neutral-200 shadow-xs max-w-full truncate"
+                      title={`${item.quantity || 0} prs × ₹${item.unitPrice || 0} = ₹${formatCurrency(itemTaxable)}`}
+                    >
                       {item.quantity || 0} prs &times; ₹{item.unitPrice || 0} = <strong className="text-neutral-900 dark:text-neutral-100 ml-1">₹{formatCurrency(itemTaxable)}</strong>
                     </span>
                   </div>
@@ -531,71 +561,101 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
           </div>
 
           {/* Right Side: Financial Calculation Breakdown */}
-          <div className="md:col-span-6 flex flex-col justify-between space-y-4 pt-2 md:pt-0">
+          <div className="md:col-span-6 flex flex-col justify-between space-y-4 pt-2 md:pt-0 min-w-0">
             <div className="space-y-2 text-xs text-neutral-600 dark:text-neutral-400">
-              <div className="flex justify-between py-1">
-                <span>Taxable Value:</span>
-                <span className="font-mono tabular-nums font-medium text-neutral-900 dark:text-neutral-100">
+              <div className="flex justify-between py-1 gap-2 items-baseline">
+                <span className="shrink-0">Taxable Value:</span>
+                <span className="font-mono tabular-nums font-medium text-neutral-900 dark:text-neutral-100 text-right break-all min-w-0">
                   ₹{formatCurrency(calcs.totalTaxableValue)}
                 </span>
               </div>
 
-              <div className="flex justify-between py-1">
-                <span>Packing Charge:</span>
-                <span className="font-mono tabular-nums font-medium text-neutral-900 dark:text-neutral-100">
+              <div className="flex justify-between py-1 gap-2 items-baseline">
+                <span className="shrink-0">Packing Charge:</span>
+                <span className="font-mono tabular-nums font-medium text-neutral-900 dark:text-neutral-100 text-right break-all min-w-0">
                   ₹{formatCurrency(calcs.packingCharge)}
                 </span>
               </div>
 
-              <div className="flex justify-between py-1">
-                <span>CGST @ 2.5%:</span>
-                <span className="font-mono tabular-nums font-medium text-neutral-900 dark:text-neutral-100">
+              <div className="flex justify-between py-1 gap-2 items-baseline">
+                <span className="shrink-0">CGST @ 2.5%:</span>
+                <span className="font-mono tabular-nums font-medium text-neutral-900 dark:text-neutral-100 text-right break-all min-w-0">
                   ₹{formatCurrency(calcs.cgst)}
                 </span>
               </div>
 
-              <div className="flex justify-between py-1">
-                <span>SGST @ 2.5%:</span>
-                <span className="font-mono tabular-nums font-medium text-neutral-900 dark:text-neutral-100">
+              <div className="flex justify-between py-1 gap-2 items-baseline">
+                <span className="shrink-0">SGST @ 2.5%:</span>
+                <span className="font-mono tabular-nums font-medium text-neutral-900 dark:text-neutral-100 text-right break-all min-w-0">
                   ₹{formatCurrency(calcs.sgst)}
                 </span>
               </div>
 
-              <div className="flex justify-between py-1 text-neutral-400 dark:text-neutral-500">
-                <span>Round Off:</span>
-                <span className="font-mono tabular-nums text-neutral-600 dark:text-neutral-400">
+              <div className="flex justify-between py-1 gap-2 items-baseline text-neutral-400 dark:text-neutral-500">
+                <span className="shrink-0">Round Off:</span>
+                <span className="font-mono tabular-nums text-neutral-600 dark:text-neutral-400 text-right break-all min-w-0">
                   {calcs.roundOff}
                 </span>
               </div>
 
-              <div className="border-t border-neutral-200 dark:border-neutral-800 my-2 pt-2 flex justify-between items-baseline">
-                <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Grand Total:</span>
-                <span className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-100 font-mono tabular-nums">
+              <div className="border-t border-neutral-200 dark:border-neutral-800 my-2 pt-2.5 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+                <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 shrink-0">Grand Total:</span>
+                <span 
+                  className={`font-bold tracking-tight text-neutral-900 dark:text-neutral-100 font-mono tabular-nums text-right break-all min-w-0 ${
+                    formatCurrency(calcs.grandTotal).length > 15
+                      ? 'text-lg'
+                      : formatCurrency(calcs.grandTotal).length > 11
+                      ? 'text-xl'
+                      : 'text-2xl'
+                  }`}
+                >
                   ₹{formatCurrency(calcs.grandTotal)}
                 </span>
               </div>
             </div>
 
-            {/* Desktop Action Buttons */}
+            {/* Desktop Action Buttons (Stacked & Grid for zero overflow) */}
             {onDownloadPdf && onPreview && (
-              <div className="hidden md:flex items-center gap-2.5 pt-2">
-                <button
-                  type="button"
-                  onClick={onPreview}
-                  className="depth-btn-secondary h-10 px-4 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5"
-                >
-                  <Eye className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400" />
-                  <span>Preview</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={onDownloadPdf}
-                  disabled={isGeneratingPdf}
-                  className="depth-btn-primary h-10 px-5 flex-1 rounded-lg text-xs font-medium flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>{isGeneratingPdf ? 'Generating PDF...' : 'Download PDF'}</span>
-                </button>
+              <div className="hidden md:flex flex-col gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800/80">
+                {onSaveToLedgerAndDownload && (
+                  <button
+                    type="button"
+                    onClick={onSaveToLedgerAndDownload}
+                    disabled={isGeneratingPdf}
+                    className="depth-btn-primary h-11 w-full px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 transition-all active:scale-[0.99]"
+                    title="Log bill in accounts ledger and download PDF"
+                  >
+                    <BookmarkPlus className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="truncate">
+                      {isGeneratingPdf
+                        ? 'Generating PDF...'
+                        : (editingLedgerId ? 'Update & Download PDF' : 'Save to Ledger & Download')}
+                    </span>
+                  </button>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={onDownloadPdf}
+                    disabled={isGeneratingPdf}
+                    className="depth-btn-secondary h-10 px-3 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 disabled:opacity-50 transition-colors"
+                    title="Generate and download PDF immediately without saving to accounts"
+                  >
+                    <Download className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400 shrink-0" />
+                    <span className="truncate">Download PDF Only</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onPreview}
+                    className="depth-btn-secondary h-10 px-3 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
+                    title="Preview exact A4 invoice"
+                  >
+                    <Eye className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400 shrink-0" />
+                    <span>Preview</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
