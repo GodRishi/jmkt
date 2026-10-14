@@ -83,11 +83,18 @@ const INVOICE_STANDALONE_CSS = `
     font-size: 9px;
     font-weight: 800;
     border: 1.5px solid #000000;
-    padding: 3px 8px;
+    height: 20px;
+    padding: 0 8px;
     letter-spacing: 0.8px;
     text-transform: uppercase;
     background-color: #ffffff;
     border-radius: 2px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    box-sizing: border-box;
+    text-align: center;
   }
 
   .title-main { font-size: 14px; letter-spacing: 3.5px; font-weight: 800; margin: 0; text-transform: uppercase; color: #0f172a; }
@@ -134,7 +141,18 @@ const INVOICE_STANDALONE_CSS = `
   }
 
   .words-cell { vertical-align: top !important; padding: 8px 10px !important; border-left: none !important; border-bottom: none !important; height: 100%; }
-  .words-box { line-height: 1.4; }
+  .words-box { line-height: 1.5; }
+  .words-label { font-weight: 700; display: block; margin-bottom: 3px; color: #000000; }
+  .words-amount {
+    display: block;
+    font-size: 11px;
+    font-style: italic;
+    font-weight: 500;
+    letter-spacing: 0.35px;
+    word-spacing: 2.5px;
+    line-height: 1.55;
+    color: #000000;
+  }
   .signatory-box { margin-top: 24px; text-align: right; font-size: 10px; }
   .signature-name { font-family: 'Brush Script MT', 'Great Vibes', 'Caveat', cursive, sans-serif; font-size: 22px; display: block; margin-bottom: 2px; color: #0f172a; }
 
@@ -192,13 +210,16 @@ export async function exportToPdf(elementId: string, filename: string): Promise<
     return false;
   }
 
-  // Populate iframe document with standalone pure CSS (zero oklch functions!)
+  // Populate iframe document with standalone pure CSS & Google Fonts (zero oklch functions!)
   iframeDoc.open();
   iframeDoc.write(`
     <!DOCTYPE html>
     <html>
       <head>
         <meta charset="utf-8">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600&display=swap" rel="stylesheet">
         <style>${INVOICE_STANDALONE_CSS}</style>
       </head>
       <body></body>
@@ -211,8 +232,18 @@ export async function exportToPdf(elementId: string, filename: string): Promise<
   iframeDoc.body.appendChild(clone);
 
   try {
-    // Wait for iframe rendering
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // Wait for web fonts and layout inside iframe
+    if (iframeDoc.fonts) {
+      try {
+        await iframeDoc.fonts.ready;
+      } catch (_) {}
+    }
+    if (document.fonts) {
+      try {
+        await document.fonts.ready;
+      } catch (_) {}
+    }
+    await new Promise((resolve) => setTimeout(resolve, 350));
 
     // Capture the clone inside the isolated iframe
     const canvas = await html2canvas(clone, {
@@ -222,6 +253,15 @@ export async function exportToPdf(elementId: string, filename: string): Promise<
       logging: false,
       width: clone.offsetWidth || 733,
       height: clone.offsetHeight || 1062,
+      onclone: (clonedDoc) => {
+        if (document.fonts) {
+          document.fonts.forEach((font) => {
+            try {
+              clonedDoc.fonts.add(font);
+            } catch (_) {}
+          });
+        }
+      },
     });
 
     // Create A4 PDF with jsPDF

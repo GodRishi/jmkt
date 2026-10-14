@@ -28,7 +28,21 @@ export const InvoiceTemplate: React.FC<InvoiceTemplateProps> = ({ data, id = 'pr
           <thead>
             <tr>
               <th colSpan={8} className="header-cell">
-                <span className="copy-badge">{data.meta.copyType || 'ORIGINAL FOR RECIPIENT'}</span>
+                <span 
+                  className="copy-badge"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '20px',
+                    lineHeight: '1',
+                    padding: '0 8px',
+                    boxSizing: 'border-box',
+                    textAlign: 'center',
+                  }}
+                >
+                  {data.meta.copyType || 'ORIGINAL FOR RECIPIENT'}
+                </span>
                 <div className="title-main">TAX INVOICE</div>
                 <div className="title-company">JAI MAA KAMAKHYA TRADERS</div>
                 <div className="header-subtext">WHOLE SELLER OF QUALITY AIR MIX, PVC, PU &amp; TPR, SOLE</div>
@@ -99,8 +113,20 @@ export const InvoiceTemplate: React.FC<InvoiceTemplateProps> = ({ data, id = 'pr
             <tr>
               <td colSpan={5} rowSpan={6} className="words-cell">
                 <div className="words-box">
-                  <strong>Amount Chargeable (in words):</strong><br />
-                  <span style={{ fontStyle: 'italic', fontSize: '11px' }}>
+                  <strong className="words-label">Amount Chargeable (in words):</strong>
+                  <span 
+                    className="words-amount"
+                    style={{
+                      fontStyle: 'italic',
+                      fontSize: '11px',
+                      display: 'block',
+                      marginTop: '3px',
+                      letterSpacing: '0.35px',
+                      wordSpacing: '2.5px',
+                      lineHeight: '1.55',
+                      color: '#000000',
+                    }}
+                  >
                     {calcs.amountInWords}
                   </span>
                 </div>

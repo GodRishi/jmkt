@@ -20,12 +20,14 @@ import {
 interface LedgerViewProps {
   invoices: LedgerInvoice[];
   stats: LedgerStats;
-  onToggleStatus: (id: string) => void;
+  onToggleStatus: (id: string, currentStatus?: string) => void;
   onEditInvoice: (invoice: LedgerInvoice) => void;
   onRedownloadPdf: (invoice: LedgerInvoice) => void;
   onDeleteInvoice: (id: string, invoiceNo: string) => void;
   onNavigateToCreate: () => void;
+  onRefresh?: () => void;
   isDownloadingId?: string | null;
+  isSupabaseConnected?: boolean;
 }
 
 export const LedgerView: React.FC<LedgerViewProps> = ({
@@ -36,7 +38,9 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
   onRedownloadPdf,
   onDeleteInvoice,
   onNavigateToCreate,
+  onRefresh,
   isDownloadingId = null,
+  isSupabaseConnected = true,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'paid'>('all');
@@ -64,6 +68,18 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
 
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
+      {/* Supabase Disconnected Notice in Ledger */}
+      {!isSupabaseConnected && (
+        <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between gap-2 shadow-xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>
+              <strong>Supabase credentials not detected:</strong> Cloud ledger syncing is inactive. Add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> to connect.
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* 1. Overview KPI Summary Badges */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Total Pending / Baki */}
@@ -162,15 +178,29 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
             )}
           </div>
 
-          {/* New Bill Button */}
-          <button
-            type="button"
-            onClick={onNavigateToCreate}
-            className="depth-btn-primary h-11 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Create New Bill</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={onRefresh}
+                className="depth-btn-secondary h-11 px-3 sm:px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 shrink-0"
+                title="Fetch live records from Supabase"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300" />
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
+            )}
+
+            {/* New Bill Button */}
+            <button
+              type="button"
+              onClick={onNavigateToCreate}
+              className="depth-btn-primary h-11 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create New Bill</span>
+            </button>
+          </div>
         </div>
 
         {/* Filter Pills */}
@@ -268,7 +298,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => onToggleStatus(inv.id)}
+                      onClick={() => onToggleStatus(inv.id, inv.payment_status)}
                       className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 ${
                         isPaid
                           ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800'
