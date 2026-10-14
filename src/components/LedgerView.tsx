@@ -27,6 +27,7 @@ interface LedgerViewProps {
   onNavigateToCreate: () => void;
   onRefresh?: () => void;
   isDownloadingId?: string | null;
+  isDatabaseConnected?: boolean;
   isSupabaseConnected?: boolean;
 }
 
@@ -40,8 +41,10 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
   onNavigateToCreate,
   onRefresh,
   isDownloadingId = null,
+  isDatabaseConnected,
   isSupabaseConnected = true,
 }) => {
+  const isDbConnected = isDatabaseConnected ?? isSupabaseConnected;
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'paid'>('all');
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
@@ -68,13 +71,13 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
 
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
-      {/* Supabase Disconnected Notice in Ledger */}
-      {!isSupabaseConnected && (
+      {/* Database Disconnected Notice in Ledger */}
+      {!isDbConnected && (
         <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between gap-2 shadow-xs">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
             <span>
-              <strong>Supabase credentials not detected:</strong> Cloud ledger syncing is inactive. Add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> to connect.
+              <strong>Database connection not detected:</strong> Cloud ledger syncing is inactive. Configure database credentials in your environment to sync records.
             </span>
           </div>
         </div>
@@ -184,7 +187,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({
                 type="button"
                 onClick={onRefresh}
                 className="depth-btn-secondary h-11 px-3 sm:px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 shrink-0"
-                title="Fetch live records from Supabase"
+                title="Fetch live records from database"
               >
                 <RefreshCw className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300" />
                 <span className="hidden sm:inline">Refresh</span>

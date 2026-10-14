@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isDatabaseConfigured } from '../lib/supabase';
 import type { InvoiceData } from '../types/invoice';
 import type { LedgerInvoice, LedgerStats } from '../types/ledger';
 
@@ -11,7 +11,6 @@ function getLocalLedger(): LedgerInvoice[] {
     if (!raw) return [];
     return JSON.parse(raw);
   } catch (err) {
-    console.error('[Ledger Service] Error parsing local ledger:', err);
     return [];
   }
 }
@@ -20,36 +19,42 @@ function setLocalLedger(invoices: LedgerInvoice[]): void {
   try {
     localStorage.setItem(LOCAL_STORAGE_LEDGER_KEY, JSON.stringify(invoices));
   } catch (err) {
-    console.error('[Ledger Service] Error saving local ledger:', err);
+    // Ignore storage write issues
   }
 }
 
 export const ledgerService = {
+  isDatabaseConnected(): boolean {
+    return isDatabaseConfigured;
+  },
+
   isSupabaseConnected(): boolean {
-    return isSupabaseConfigured;
+    return isDatabaseConfigured;
   },
 
   async getAllInvoices(): Promise<LedgerInvoice[]> {
-    if (!isSupabaseConfigured) {
-      console.warn('[Ledger Service] Supabase credentials not detected, falling back to local cache.');
+    if (!isDatabaseConfigured) {
       return getLocalLedger();
     }
 
-    console.log('[Ledger Service] Fetching live records from Supabase...');
-    const { data, error } = await supabase
-      .from('invoices_ledger')
-      .select('*')
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('invoices_ledger')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('[Ledger Service] Supabase fetch error:', error);
-      throw error;
-    }
+      if (error) {
+        throw error;
+      }
 
-    if (data) {
-      // Sync local cache
-      setLocalLedger(data as LedgerInvoice[]);
-      return data as LedgerInvoice[];
+      if (data) {
+        // Sync local cache
+        setLocalLedger(data as LedgerInvoice[]);
+        return data as LedgerInvoice[];
+      }
+    } catch (err) {
+      // Return cached entries if query encounters an issue
+      return getLocalLedger();
     }
 
     return [];

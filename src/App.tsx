@@ -12,7 +12,8 @@ import { LedgerView } from './components/LedgerView';
 import { exportToPdf } from './utils/pdfExport';
 import { calculateInvoiceTotals } from './utils/calculator';
 import { ledgerService } from './services/ledgerService';
-import { supabase, isSupabaseConfigured } from './lib/supabase';
+import { supabase, isDatabaseConfigured } from './lib/supabase';
+import { checkRateLimit, sanitizeInvoicePayload, maskDatabaseError } from './utils/security';
 import { 
   Check, 
   FileText, 
@@ -78,26 +79,31 @@ export function App() {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // 3. Fetch live rows directly from Supabase
+  // 3. Fetch live rows directly from database with anti-spam rate limiting
   const fetchLedger = async () => {
-    if (!isSupabaseConfigured) {
-      console.error("CRITICAL: Supabase environment variables are missing!");
+    if (!isDatabaseConfigured) {
       return;
     }
 
-    console.log("Fetching live ledger from Supabase...");
-    const { data, error } = await supabase
-      .from('invoices_ledger')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error("Error fetching ledger:", error);
+    const rate = checkRateLimit('fetch_ledger', 8, 10000);
+    if (!rate.allowed) {
       return;
     }
 
-    console.log("Fetched ledger successfully:", data);
-    setLedgerInvoices((data as LedgerInvoice[]) || []);
+    try {
+      const { data, error } = await supabase
+        .from('invoices_ledger')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        return;
+      }
+
+      setLedgerInvoices((data as LedgerInvoice[]) || []);
+    } catch {
+      // Quiet recovery
+    }
   };
 
   useEffect(() => {
@@ -210,20 +216,28 @@ export function App() {
     }
   };
 
-  // 2. "Save to Ledger & Download" — Logs record into Supabase & generates PDF
+  // 2. "Save to Ledger & Download" — Logs record into database & generates PDF
   const handleSaveToLedgerAndDownload = async () => {
-    if (!isSupabaseConfigured) {
-      console.error("CRITICAL: Supabase environment variables are missing!");
-      alert("Supabase credentials not detected.\n\nPlease configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file to enable cloud ledger syncing.");
+    if (isGeneratingPdf) return;
+
+    // Anti-DDoS / Request flood guard
+    const rateCheck = checkRateLimit('save_bill', 3, 10000);
+    if (!rateCheck.allowed) {
+      alert(`Too many requests. Please wait ${rateCheck.waitSeconds}s before trying again.`);
+      return;
+    }
+
+    if (!isDatabaseConfigured) {
+      alert("Database connection not detected.\n\nPlease check your environment configuration to enable cloud ledger syncing.");
       return;
     }
 
     setIsGeneratingPdf(true);
-    showToast('Saving to Supabase & generating PDF...');
+    showToast('Saving to database & generating PDF...');
 
     try {
       const calcs = calculateInvoiceTotals(data);
-      const invoicePayload = {
+      const rawPayload = {
         invoice_no: data.meta.invoiceNo || 'DRAFT-' + Date.now().toString().slice(-4),
         invoice_date: data.meta.dated || new Date().toISOString().split('T')[0],
         buyer_name: data.buyer.buyerName || 'Unregistered Buyer',
@@ -246,39 +260,35 @@ export function App() {
         notes: '',
       };
 
-      console.log("Submitting to Supabase...", invoicePayload);
+      // Sanitize against XSS, ReDoS, and buffer overflow attacks
+      const invoicePayload = sanitizeInvoicePayload(rawPayload);
 
       if (editingLedgerId) {
-        const { data: updatedData, error: updateError } = await supabase
+        const { error: updateError } = await supabase
           .from('invoices_ledger')
           .update(invoicePayload)
           .eq('id', editingLedgerId)
           .select();
 
         if (updateError) {
-          console.error("Supabase Insert Error:", updateError);
-          alert("Database Error: " + updateError.message);
+          alert("Database Error: " + maskDatabaseError(updateError));
           return;
         }
 
-        console.log("Saved successfully to Supabase:", updatedData);
         setEditingLedgerId(null);
       } else {
-        const { data: insertData, error: insertError } = await supabase
+        const { error: insertError } = await supabase
           .from('invoices_ledger')
           .insert([invoicePayload])
           .select();
 
         if (insertError) {
-          console.error("Supabase Insert Error:", insertError);
-          alert("Database Error: " + insertError.message);
+          alert("Database Error: " + maskDatabaseError(insertError));
           return;
         }
-
-        console.log("Saved successfully to Supabase:", insertData);
       }
 
-      // Re-fetch live rows from Supabase
+      // Re-fetch live rows from database
       await fetchLedger();
 
       // Download PDF
@@ -286,20 +296,24 @@ export function App() {
       const cleanBuyer = (data.buyer.buyerName || 'Buyer').trim().replace(/\s+/g, '_').replace(/[/\\?%*:|"<>]/g, '');
       await exportToPdf('printable-invoice', `Invoice_${cleanInvoiceNo}_${cleanBuyer}`);
 
-      showToast('Saved to Supabase & PDF downloaded successfully!');
+      showToast('Saved to database & PDF downloaded successfully!');
     } catch (err) {
-      console.error('Save to ledger error:', err);
-      alert('Database Error: ' + (err instanceof Error ? err.message : String(err)));
+      alert("Database Error: " + maskDatabaseError(err));
     } finally {
       setIsGeneratingPdf(false);
     }
   };
 
-  // Ledger actions: direct Supabase status update
+  // Ledger actions: direct database status update with rate limiting
   const handleTogglePaymentStatus = async (id: string, currentStatus?: string) => {
-    if (!isSupabaseConfigured) {
-      console.error("CRITICAL: Supabase environment variables are missing!");
-      alert("Supabase credentials not detected");
+    const rateCheck = checkRateLimit('status_update', 6, 10000);
+    if (!rateCheck.allowed) {
+      showToast(`Too many requests. Please wait ${rateCheck.waitSeconds}s.`);
+      return;
+    }
+
+    if (!isDatabaseConfigured) {
+      alert("Database connection not detected");
       return;
     }
 
@@ -307,8 +321,6 @@ export function App() {
     const resolvedStatus = currentStatus || currentInv?.payment_status || 'pending';
     const newStatus: 'pending' | 'paid' = resolvedStatus === 'paid' ? 'pending' : 'paid';
     const now = new Date().toISOString();
-
-    console.log(`Updating status in Supabase for ${id} to ${newStatus}...`);
 
     const { error } = await supabase
       .from('invoices_ledger')
@@ -320,12 +332,10 @@ export function App() {
       .eq('id', id);
 
     if (error) {
-      console.error("Supabase Update Status Error:", error);
-      alert("Database Error: " + error.message);
+      alert("Database Error: " + maskDatabaseError(error));
       return;
     }
 
-    console.log(`Payment status updated to ${newStatus} in Supabase`);
     showToast(`Invoice marked as ${newStatus.toUpperCase()}`);
     await fetchLedger();
   };
@@ -344,9 +354,14 @@ export function App() {
   };
 
   const handleDeleteLedgerInvoice = async (id: string, invoiceNo: string) => {
-    if (!isSupabaseConfigured) {
-      console.error("CRITICAL: Supabase environment variables are missing!");
-      alert("Supabase credentials not detected");
+    const rateCheck = checkRateLimit('delete_invoice', 5, 10000);
+    if (!rateCheck.allowed) {
+      showToast(`Too many requests. Please wait ${rateCheck.waitSeconds}s.`);
+      return;
+    }
+
+    if (!isDatabaseConfigured) {
+      alert("Database connection not detected");
       return;
     }
 
@@ -354,20 +369,16 @@ export function App() {
       return;
     }
 
-    console.log(`Deleting invoice ${id} from Supabase...`);
-
     const { error } = await supabase
       .from('invoices_ledger')
       .delete()
       .eq('id', id);
 
     if (error) {
-      console.error("Supabase Delete Error:", error);
-      alert("Database Error: " + error.message);
+      alert("Database Error: " + maskDatabaseError(error));
       return;
     }
 
-    console.log(`Invoice ${id} deleted successfully from Supabase`);
     if (editingLedgerId === id) setEditingLedgerId(null);
     showToast(`Invoice #${invoiceNo} deleted from ledger.`);
     await fetchLedger();
@@ -460,13 +471,13 @@ export function App() {
 
           {/* Right: Merchant Badge & Lock / Sign Out */}
           <div className="flex items-center gap-2">
-            {/* Supabase Status Badge */}
+            {/* Database Status Badge */}
             <div 
               className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200/50 dark:border-neutral-700/60 text-[11px] font-medium text-neutral-700 dark:text-neutral-300"
-              title={isSupabaseConfigured ? 'Supabase connected & ready' : 'Supabase credentials not detected in .env'}
+              title={isDatabaseConfigured ? 'Database connected & operational' : 'Database connection not configured'}
             >
-              <span className={`w-2 h-2 rounded-full ${isSupabaseConfigured ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-              <span>{isSupabaseConfigured ? 'Supabase Connected' : 'Supabase Not Detected'}</span>
+              <span className={`w-2 h-2 rounded-full ${isDatabaseConfigured ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+              <span>{isDatabaseConfigured ? 'Database Online' : 'Database Offline'}</span>
             </div>
 
             {/* Theme Toggle */}
@@ -499,17 +510,17 @@ export function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-4xl w-full mx-auto px-3.5 py-4 sm:px-6 sm:py-6 lg:py-8 pb-28 md:pb-12">
-        {/* Banner if Supabase credentials are not detected */}
-        {!isSupabaseConfigured && (
+        {/* Banner if database credentials are not detected */}
+        {!isDatabaseConfigured && (
           <div className="mb-5 p-3.5 sm:p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs sm:text-sm flex items-start sm:items-center justify-between gap-3 shadow-xs animate-in fade-in duration-200">
             <div className="flex items-center gap-2.5">
               <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
               <div>
                 <p className="font-semibold text-amber-950 dark:text-amber-100">
-                  Supabase credentials not detected
+                  Database connection not detected
                 </p>
                 <p className="text-[11px] sm:text-xs text-amber-800 dark:text-amber-300 mt-0.5">
-                  Configure <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> in your <code>.env</code> file to enable live database saving and fetching.
+                  Configure database credentials in your environment file to enable live cloud ledger syncing across devices.
                 </p>
               </div>
             </div>
@@ -569,7 +580,7 @@ export function App() {
             onNavigateToCreate={() => setActiveTab('create')}
             onRefresh={fetchLedger}
             isDownloadingId={downloadingLedgerId}
-            isSupabaseConnected={isSupabaseConfigured}
+            isDatabaseConnected={isDatabaseConfigured}
           />
         )}
       </main>

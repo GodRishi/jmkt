@@ -1,8 +1,8 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig, loadEnv, type UserConfig } from 'vite'
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode }): UserConfig => {
   // Load env variables with VITE_, NEXT_PUBLIC_, and NEXT_ prefixes
   const env = loadEnv(mode, process.cwd(), ['VITE_', 'NEXT_PUBLIC_', 'NEXT_'])
 
@@ -21,6 +21,22 @@ export default defineConfig(({ mode }) => {
         env.NEXT_PUBLIC_APP_PIN || env.VITE_APP_PIN || ''
       ),
       'process.env': {},
+    },
+    server: {
+      headers: {
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'SAMEORIGIN',
+        'Referrer-Policy': 'strict-origin-when-cross-origin',
+        'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+      },
+    },
+    preview: {
+      headers: {
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'SAMEORIGIN',
+        'Referrer-Policy': 'strict-origin-when-cross-origin',
+        'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+      },
     },
     build: {
       sourcemap: false, // Turn off debug sourcemaps in production
