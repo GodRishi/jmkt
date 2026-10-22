@@ -1,5 +1,8 @@
 import type { LineItem } from './invoice';
 
+export type PaymentStatus = 'pending' | 'partial' | 'paid';
+export type PaymentMode = 'Cash' | 'UPI' | 'Bank / RTGS' | 'Cheque';
+
 export interface LedgerInvoice {
   id: string;
   invoice_no: string;
@@ -8,6 +11,7 @@ export interface LedgerInvoice {
   buyer_address: string;
   buyer_gstin: string;
   account_no: string;
+  party_phone?: string | null;
   place_of_supply: string;
   dispatch_mode: string;
   terms: string;
@@ -20,7 +24,9 @@ export interface LedgerInvoice {
   sgst: number;
   round_off: string;
   grand_total: number;
-  payment_status: 'pending' | 'paid';
+  amount_paid?: number;
+  balance_due?: number;
+  payment_status: PaymentStatus;
   payment_date?: string | null;
   notes?: string | null;
   created_at: string;
@@ -32,5 +38,49 @@ export interface LedgerStats {
   totalCollected: number;
   totalBills: number;
   pendingCount: number;
+  partialCount: number;
   paidCount: number;
+}
+
+export interface SavedParty {
+  id: string;
+  name: string;
+  phone?: string | null;
+  address?: string | null;
+  gstin?: string | null;
+  account_no?: string | null;
+  created_at?: string;
+}
+
+export interface SavedArticle {
+  id: string;
+  article_code: string;
+  color_spec?: string | null;
+  hsn_code?: string | null;
+  default_mrp?: number | null;
+  default_rate?: number | null;
+  created_at?: string;
+}
+
+export interface PaymentTransaction {
+  id: string;
+  invoice_id: string;
+  payment_date: string;
+  amount: number;
+  payment_mode: PaymentMode;
+  notes?: string | null;
+  created_at?: string;
+}
+
+export interface PartySummary {
+  partyName: string;
+  phone?: string | null;
+  address?: string | null;
+  gstin?: string | null;
+  accountNo?: string | null;
+  totalBilled: number;
+  totalPaid: number;
+  balanceDue: number;
+  invoiceCount: number;
+  invoices: LedgerInvoice[];
 }

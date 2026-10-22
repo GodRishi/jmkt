@@ -236,12 +236,12 @@ export async function exportToPdf(elementId: string, filename: string): Promise<
     if (iframeDoc.fonts) {
       try {
         await iframeDoc.fonts.ready;
-      } catch (_) {}
+      } catch {}
     }
     if (document.fonts) {
       try {
         await document.fonts.ready;
-      } catch (_) {}
+      } catch {}
     }
     await new Promise((resolve) => setTimeout(resolve, 350));
 
@@ -258,7 +258,7 @@ export async function exportToPdf(elementId: string, filename: string): Promise<
           document.fonts.forEach((font) => {
             try {
               clonedDoc.fonts.add(font);
-            } catch (_) {}
+            } catch {}
           });
         }
       },

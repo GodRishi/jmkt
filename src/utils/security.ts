@@ -108,6 +108,7 @@ export function sanitizeInvoicePayload(raw: any) {
     buyer_address: sanitizeString(raw.buyer_address, 300),
     buyer_gstin: sanitizeString(raw.buyer_gstin, 25),
     account_no: sanitizeString(raw.account_no, 40),
+    party_phone: sanitizeString(raw.party_phone, 30),
     place_of_supply: sanitizeString(raw.place_of_supply, 80),
     dispatch_mode: sanitizeString(raw.dispatch_mode, 80),
     terms: sanitizeString(raw.terms, 100),
@@ -118,9 +119,11 @@ export function sanitizeInvoicePayload(raw: any) {
     packing_charge: sanitizeNumber(raw.packing_charge, 0, 0, 10000000),
     cgst: sanitizeNumber(raw.cgst, 0, 0, 10000000),
     sgst: sanitizeNumber(raw.sgst, 0, 0, 10000000),
-    round_off: sanitizeNumber(raw.round_off, 0, -100, 100),
+    round_off: String(sanitizeNumber(raw.round_off, 0, -100, 100).toFixed(2)),
     grand_total: sanitizeNumber(raw.grand_total, 0, 0, 100000000),
-    payment_status: raw.payment_status === 'paid' ? 'paid' : 'pending',
+    amount_paid: sanitizeNumber(raw.amount_paid, 0, 0, 100000000),
+    balance_due: sanitizeNumber(raw.balance_due, 0, 0, 100000000),
+    payment_status: (raw.payment_status === 'paid' ? 'paid' : (raw.payment_status === 'partial' ? 'partial' : 'pending')) as 'pending' | 'partial' | 'paid',
     notes: sanitizeString(raw.notes, 500),
   };
 }
@@ -152,3 +155,59 @@ export function maskDatabaseError(err: unknown): string {
   // Standard masked error for any SQL or backend internal error
   return 'Database operation failed. Please verify your connection and try again.';
 }
+
+/**
+ * Validates invoice form data before generating PDF or saving to ledger.
+ * Strictly disallows empty or invalid Buyer Name, Invoice No., and zero/empty line items.
+ */
+export function validateInvoiceData(data: {
+  buyer?: { buyerName?: string };
+  meta?: { invoiceNo?: string };
+  items?: Array<{ description?: string; title?: string; quantity?: number; unitPrice?: number; mrp?: number }>;
+  charges?: { packingCharge?: number };
+}): { valid: boolean; error?: string } {
+  const buyerName = data.buyer?.buyerName?.trim();
+  if (!buyerName) {
+    return { valid: false, error: 'Validation Error: Buyer Name is required to generate or save a bill.' };
+  }
+
+  const invoiceNo = data.meta?.invoiceNo?.trim();
+  if (!invoiceNo) {
+    return { valid: false, error: 'Validation Error: Invoice No. is required to generate or save a bill.' };
+  }
+
+  const items = data.items;
+  if (!items || items.length === 0) {
+    return { valid: false, error: 'Validation Error: At least one line item is required.' };
+  }
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const desc = (item.description || item.title || '').trim();
+    if (!desc) {
+      return { valid: false, error: `Validation Error: Item #${i + 1} is missing an Article Title / Description.` };
+    }
+
+    const qty = Number(item.quantity);
+    if (isNaN(qty) || qty <= 0) {
+      return { valid: false, error: `Validation Error: Item #${i + 1} ("${desc}") must have Quantity greater than 0.` };
+    }
+
+    const rate = Number(item.unitPrice);
+    if (isNaN(rate) || rate <= 0) {
+      return { valid: false, error: `Validation Error: Item #${i + 1} ("${desc}") must have Rate / Unit greater than 0.` };
+    }
+
+    const mrp = Number(item.mrp || 0);
+    if (mrp < 0) {
+      return { valid: false, error: `Validation Error: Item #${i + 1} ("${desc}") MRP cannot be negative.` };
+    }
+  }
+
+  if (Number(data.charges?.packingCharge || 0) < 0) {
+    return { valid: false, error: 'Validation Error: Packing Charge cannot be negative.' };
+  }
+
+  return { valid: true };
+}
+

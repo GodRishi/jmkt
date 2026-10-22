@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { InvoiceData, LineItem } from '../types/invoice';
+import type { SavedParty, SavedArticle } from '../types/ledger';
 import { calculateInvoiceTotals, formatCurrency } from '../utils/calculator';
 import { DatePickerPopover } from './DatePickerPopover';
+import { PartyAutocomplete } from './PartyAutocomplete';
+import { ArticleAutocomplete } from './ArticleAutocomplete';
+import { SuggestiveInput } from './SuggestiveInput';
+import { suggestionsService } from '../services/suggestionsService';
 import { 
   Building2, 
   FileText, 
@@ -19,6 +24,8 @@ import {
   ChevronUp,
   BookmarkPlus,
   CheckCircle,
+  Send,
+  Phone,
 } from 'lucide-react';
 
 interface MobileInvoiceFormProps {
@@ -28,12 +35,17 @@ interface MobileInvoiceFormProps {
   onClearAll: () => void;
   onDownloadPdf?: () => void;
   onSaveToLedgerAndDownload?: () => void;
+  onShareWhatsAppAndSave?: () => void;
+  onShareWhatsAppOnly?: () => void;
+  onShareWhatsApp?: () => void;
   onPreview?: () => void;
   isGeneratingPdf?: boolean;
   theme?: 'light' | 'dark';
   onToggleTheme?: () => void;
   editingLedgerId?: string | null;
   onCancelEdit?: () => void;
+  parties?: SavedParty[];
+  articles?: SavedArticle[];
 }
 
 export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
@@ -43,14 +55,27 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
   onClearAll,
   onDownloadPdf,
   onSaveToLedgerAndDownload,
+  onShareWhatsAppAndSave,
+  onShareWhatsAppOnly,
+  onShareWhatsApp,
   onPreview,
   isGeneratingPdf = false,
   theme = 'light',
   onToggleTheme,
   editingLedgerId,
   onCancelEdit,
+  parties = [],
+  articles = [],
 }) => {
   const calcs = calculateInvoiceTotals(data);
+
+  // Dynamic suggestions for repeating fields (with user-learned additions)
+  const addressSuggestions = useMemo(() => suggestionsService.getAddressSuggestions(parties), [parties]);
+  const specSuggestions = useMemo(() => suggestionsService.getSpecSuggestions(articles), [articles]);
+  const placeSuggestions = useMemo(() => suggestionsService.getPlaceOfSupplySuggestions(), []);
+  const dispatchSuggestions = useMemo(() => suggestionsService.getDispatchModeSuggestions(), []);
+  const termsSuggestions = useMemo(() => suggestionsService.getPaymentTermsSuggestions(), []);
+  const copyBadgeSuggestions = useMemo(() => suggestionsService.getCopyBadgeSuggestions(), []);
 
   // Mobile section collapsibility for faster shop-floor navigation
   const [buyerExpanded, setBuyerExpanded] = useState(true);
@@ -58,6 +83,33 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
 
   const handleBuyerChange = (field: keyof InvoiceData['buyer'], value: string) => {
     onChange({ ...data, buyer: { ...data.buyer, [field]: value } });
+  };
+
+  const handleSelectParty = (party: SavedParty) => {
+    onChange({
+      ...data,
+      buyer: {
+        ...data.buyer,
+        buyerName: party.name,
+        phone: party.phone || data.buyer.phone || '',
+        buyerAddress: party.address || data.buyer.buyerAddress,
+        gstinUin: party.gstin || data.buyer.gstinUin,
+        accountNo: party.account_no || data.buyer.accountNo,
+      },
+    });
+  };
+
+  const handleSelectArticle = (index: number, art: SavedArticle) => {
+    const newItems = [...data.items];
+    newItems[index] = {
+      ...newItems[index],
+      description: art.article_code,
+      colorSpec: art.color_spec || newItems[index].colorSpec,
+      hsnCode: art.hsn_code || newItems[index].hsnCode || '64041990',
+      mrp: typeof art.default_mrp === 'number' && art.default_mrp > 0 ? art.default_mrp : newItems[index].mrp,
+      unitPrice: typeof art.default_rate === 'number' && art.default_rate > 0 ? art.default_rate : newItems[index].unitPrice,
+    };
+    onChange({ ...data, items: newItems });
   };
 
   const handleMetaChange = (field: keyof InvoiceData['meta'], value: string) => {
@@ -219,26 +271,47 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
               <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300 block mb-1">
                 Buyer Name <span className="text-rose-500">*</span>
               </label>
-              <input
-                type="text"
+              <PartyAutocomplete
                 value={data.buyer.buyerName}
-                onChange={(e) => handleBuyerChange('buyerName', e.target.value)}
+                onChange={(val) => handleBuyerChange('buyerName', val)}
+                onSelectParty={handleSelectParty}
+                parties={parties}
                 placeholder="e.g. Nuruddin Sultan"
-                className="depth-input w-full min-h-[46px] px-3.5 py-2.5 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
+                inputClassName="depth-input w-full min-h-[46px] px-3.5 py-2.5 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
+                required
               />
             </div>
 
-            <div>
-              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300 block mb-1">
-                Address / Destination
-              </label>
-              <input
-                type="text"
-                value={data.buyer.buyerAddress}
-                onChange={(e) => handleBuyerChange('buyerAddress', e.target.value)}
-                placeholder="e.g. Dalkhola, West Bengal"
-                className="depth-input w-full min-h-[46px] px-3.5 py-2.5 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
-              />
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300 block mb-1 flex items-center gap-1">
+                  <Phone className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                  Phone / WhatsApp
+                </label>
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  value={data.buyer.phone || ''}
+                  onChange={(e) => handleBuyerChange('phone', e.target.value)}
+                  placeholder="e.g. 9830123456"
+                  className="depth-input w-full min-h-[46px] px-3.5 py-2.5 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm font-mono placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300 block mb-1">
+                  Address / Destination
+                </label>
+                <SuggestiveInput
+                  value={data.buyer.buyerAddress}
+                  onChange={(val) => handleBuyerChange('buyerAddress', val)}
+                  onSaveOption={(val) => suggestionsService.saveCustomEntry('addresses', val)}
+                  options={addressSuggestions}
+                  placeholder="e.g. Dalkhola, West Bengal"
+                  categoryLabel="Destination Hubs"
+                  className="depth-input w-full min-h-[46px] px-3.5 py-2.5 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2.5">
@@ -274,11 +347,13 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
               <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300 block mb-1">
                 State &amp; State Code
               </label>
-              <input
-                type="text"
+              <SuggestiveInput
                 value={data.buyer.stateAndCode}
-                onChange={(e) => handleBuyerChange('stateAndCode', e.target.value)}
+                onChange={(val) => handleBuyerChange('stateAndCode', val)}
+                onSaveOption={(val) => suggestionsService.saveCustomEntry('placesOfSupply', val)}
+                options={placeSuggestions}
                 placeholder="West Bengal (19)"
+                categoryLabel="States &amp; Codes"
                 className="depth-input w-full min-h-[46px] px-3.5 py-2.5 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
               />
             </div>
@@ -338,11 +413,13 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
                 <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300 block mb-1">
                   Place of Supply
                 </label>
-                <input
-                  type="text"
+                <SuggestiveInput
                   value={data.meta.placeOfSupply}
-                  onChange={(e) => handleMetaChange('placeOfSupply', e.target.value)}
+                  onChange={(val) => handleMetaChange('placeOfSupply', val)}
+                  onSaveOption={(val) => suggestionsService.saveCustomEntry('placesOfSupply', val)}
+                  options={placeSuggestions}
                   placeholder="West Bengal (19)"
+                  categoryLabel="Places of Supply"
                   className="depth-input w-full min-h-[46px] px-3 py-2.5 rounded-xl text-neutral-900 dark:text-neutral-100 text-xs placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
                 />
               </div>
@@ -351,11 +428,13 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
                 <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300 block mb-1">
                   Dispatch Mode
                 </label>
-                <input
-                  type="text"
+                <SuggestiveInput
                   value={data.meta.dispatchMode}
-                  onChange={(e) => handleMetaChange('dispatchMode', e.target.value)}
+                  onChange={(val) => handleMetaChange('dispatchMode', val)}
+                  onSaveOption={(val) => suggestionsService.saveCustomEntry('dispatchModes', val)}
+                  options={dispatchSuggestions}
                   placeholder="Road Transport"
+                  categoryLabel="Dispatch Modes"
                   className="depth-input w-full min-h-[46px] px-3 py-2.5 rounded-xl text-neutral-900 dark:text-neutral-100 text-xs placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
                 />
               </div>
@@ -365,11 +444,28 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
               <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300 block mb-1">
                 Terms of Payment
               </label>
-              <input
-                type="text"
+              <SuggestiveInput
                 value={data.meta.termsOfPayment}
-                onChange={(e) => handleMetaChange('termsOfPayment', e.target.value)}
+                onChange={(val) => handleMetaChange('termsOfPayment', val)}
+                onSaveOption={(val) => suggestionsService.saveCustomEntry('paymentTerms', val)}
+                options={termsSuggestions}
                 placeholder="Immediate / Against Delivery"
+                categoryLabel="Payment Terms"
+                className="depth-input w-full min-h-[46px] px-3.5 py-2.5 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300 block mb-1">
+                Copy Badge Text
+              </label>
+              <SuggestiveInput
+                value={data.meta.copyType || 'ORIGINAL FOR RECIPIENT'}
+                onChange={(val) => handleMetaChange('copyType', val)}
+                onSaveOption={(val) => suggestionsService.saveCustomEntry('copyBadges', val)}
+                options={copyBadgeSuggestions}
+                placeholder="ORIGINAL FOR RECIPIENT"
+                categoryLabel="Invoice Copy Types"
                 className="depth-input w-full min-h-[46px] px-3.5 py-2.5 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
               />
             </div>
@@ -435,12 +531,14 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
                   <label className="text-[11px] font-medium text-neutral-600 dark:text-neutral-400 block mb-1">
                     Article Title / Description <span className="text-rose-500">*</span>
                   </label>
-                  <input
-                    type="text"
+                  <ArticleAutocomplete
                     value={item.description}
-                    onChange={(e) => handleItemChange(index, 'description', e.target.value)}
+                    onChange={(val) => handleItemChange(index, 'description', val)}
+                    onSelectArticle={(art) => handleSelectArticle(index, art)}
+                    articles={articles}
                     placeholder="e.g. 22G-13388N-RESIL"
-                    className="depth-input w-full min-h-[46px] px-3.5 py-2.5 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm font-medium placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
+                    inputClassName="depth-input w-full min-h-[46px] px-3.5 py-2.5 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm font-medium placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
+                    required
                   />
                 </div>
 
@@ -450,11 +548,13 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
                     <label className="text-[11px] font-medium text-neutral-600 dark:text-neutral-400 block mb-1 truncate">
                       Color / Spec
                     </label>
-                    <input
-                      type="text"
+                    <SuggestiveInput
                       value={item.colorSpec}
-                      onChange={(e) => handleItemChange(index, 'colorSpec', e.target.value)}
+                      onChange={(val) => handleItemChange(index, 'colorSpec', val)}
+                      onSaveOption={(val) => suggestionsService.saveCustomEntry('specs', val)}
+                      options={specSuggestions}
                       placeholder="Glacier/D.Teal"
+                      categoryLabel="Specs & Colors"
                       className="depth-input w-full min-h-[44px] px-3 py-2 rounded-xl text-neutral-900 dark:text-neutral-100 text-xs placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
                     />
                   </div>
@@ -482,8 +582,9 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
                     <input
                       type="number"
                       inputMode="numeric"
+                      min={0}
                       value={item.quantity || ''}
-                      onChange={(e) => handleItemChange(index, 'quantity', parseFloat(e.target.value) || 0)}
+                      onChange={(e) => handleItemChange(index, 'quantity', Math.max(0, parseFloat(e.target.value) || 0))}
                       placeholder="12"
                       className="depth-input w-full min-h-[46px] px-3.5 py-2.5 rounded-xl text-neutral-900 dark:text-neutral-100 text-base font-mono tabular-nums font-semibold placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
                     />
@@ -497,8 +598,9 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
                       type="number"
                       inputMode="decimal"
                       step="0.01"
+                      min={0}
                       value={item.unitPrice || ''}
-                      onChange={(e) => handleItemChange(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                      onChange={(e) => handleItemChange(index, 'unitPrice', Math.max(0, parseFloat(e.target.value) || 0))}
                       placeholder="910.00"
                       className="depth-input w-full min-h-[46px] px-3.5 py-2.5 rounded-xl text-neutral-900 dark:text-neutral-100 text-base font-mono tabular-nums font-semibold placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
                     />
@@ -512,8 +614,9 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
                       type="number"
                       inputMode="decimal"
                       step="0.01"
+                      min={0}
                       value={item.mrp || ''}
-                      onChange={(e) => handleItemChange(index, 'mrp', parseFloat(e.target.value) || 0)}
+                      onChange={(e) => handleItemChange(index, 'mrp', Math.max(0, parseFloat(e.target.value) || 0))}
                       placeholder="1549.00"
                       className="depth-input w-full min-h-[44px] px-3.5 py-2 rounded-xl text-neutral-900 dark:text-neutral-100 text-xs font-mono tabular-nums placeholder:text-neutral-400 dark:placeholder:text-neutral-600"
                     />
@@ -566,11 +669,12 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
               type="number"
               inputMode="decimal"
               step="0.01"
+              min={0}
               value={data.charges.packingCharge}
               onChange={(e) =>
                 onChange({
                   ...data,
-                  charges: { packingCharge: parseFloat(e.target.value) || 0 },
+                  charges: { packingCharge: Math.max(0, parseFloat(e.target.value) || 0) },
                 })
               }
               placeholder="0.00"
@@ -667,6 +771,7 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
         {/* Quick in-page action buttons for mobile (Stacked primary button, 50/50 secondary grid) */}
         {onDownloadPdf && onPreview && (
           <div className="space-y-2 pt-2 border-t border-neutral-100 dark:border-neutral-800/80">
+            {/* 1. Primary Save to Ledger & Download */}
             {onSaveToLedgerAndDownload && (
               <button
                 type="button"
@@ -684,27 +789,59 @@ export const MobileInvoiceForm: React.FC<MobileInvoiceFormProps> = ({
               </button>
             )}
 
+            {/* 2. Share to WhatsApp & Save to Ledger */}
+            {(onShareWhatsAppAndSave || onShareWhatsApp) && (
+              <button
+                type="button"
+                onClick={onShareWhatsAppAndSave || onShareWhatsApp}
+                disabled={isGeneratingPdf}
+                className="depth-btn-secondary w-full h-11 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/30 hover:bg-emerald-100/60 dark:hover:bg-emerald-900/40 transition-all active:scale-[0.99] disabled:opacity-50"
+                title="Save bill in accounts ledger and share via WhatsApp"
+              >
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Send className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <BookmarkPlus className="w-3.5 h-3.5 text-emerald-500" />
+                </div>
+                <span className="truncate">Share to WhatsApp &amp; Save to Ledger</span>
+              </button>
+            )}
+
+            {/* 3. Non-saving actions: WhatsApp Only & PDF Only */}
             <div className="grid grid-cols-2 gap-2">
+              {(onShareWhatsAppOnly || onShareWhatsApp) && (
+                <button
+                  type="button"
+                  onClick={onShareWhatsAppOnly || onShareWhatsApp}
+                  className="depth-btn-secondary h-10 px-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 text-neutral-700 dark:text-neutral-300 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                  title="Share bill via WhatsApp without saving to ledger"
+                >
+                  <Send className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span className="truncate">WhatsApp Only</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={onDownloadPdf}
                 disabled={isGeneratingPdf}
-                className="depth-btn-secondary h-10 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50 transition-colors"
+                className="depth-btn-secondary h-10 px-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50 transition-colors"
                 title="Download PDF immediately without saving to accounts"
               >
                 <Download className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300 shrink-0" />
-                <span className="truncate">Download PDF</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={onPreview}
-                className="depth-btn-secondary h-10 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <Eye className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300 shrink-0" />
-                <span>Preview</span>
+                <span className="truncate">PDF Only</span>
               </button>
             </div>
+
+            {/* 4. Full-width Preview */}
+            <button
+              type="button"
+              onClick={onPreview}
+              className="depth-btn-secondary w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+              title="Preview exact A4 invoice"
+            >
+              <Eye className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300 shrink-0" />
+              <span>Preview</span>
+            </button>
           </div>
         )}
       </section>

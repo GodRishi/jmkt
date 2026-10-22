@@ -1,5 +1,6 @@
 export interface BuyerDetails {
   buyerName: string;
+  phone?: string;
   buyerAddress: string;
   gstinUin: string;
   accountNo: string;

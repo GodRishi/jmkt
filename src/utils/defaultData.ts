@@ -3,6 +3,7 @@ import type { InvoiceData } from '../types/invoice';
 export const initialInvoiceData: InvoiceData = {
   buyer: {
     buyerName: '',
+    phone: '',
     buyerAddress: '',
     gstinUin: 'Unregistered',
     accountNo: '',
@@ -38,6 +39,7 @@ export const initialInvoiceData: InvoiceData = {
 export const sampleInvoiceData: InvoiceData = {
   buyer: {
     buyerName: 'Nuruddin Sultan',
+    phone: '9830123456',
     buyerAddress: 'Dalkhola, West Bengal',
     gstinUin: 'Unregistered',
     accountNo: '998796956823',

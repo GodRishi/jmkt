@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+  
+  <!-- App Background -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="none" stroke="#1E293B" stroke-width="6"/>
+  
+  <!-- Central Badge -->
+  <g filter="url(#shadow)">
+    <!-- Shoe / Footwear Silhouette Icon -->
+    <path d="M128 320c16-48 48-80 96-88 32-5.3 80-5.3 128 16 32 14 56 40 64 72H128z" fill="url(#gold)"/>
+    <path d="M112 336c0-8.8 7.2-16 16-16h288c8.8 0 16 7.2 16 16v16c0 17.7-14.3 32-32 32H144c-17.7 0-32-14.3-32-32v-16z" fill="#F8FAFC"/>
+    <circle cx="360" cy="272" r="12" fill="#10B981"/>
+    
+    <!-- Monogram Header -->
+    <text x="256" y="190" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif" font-weight="900" font-size="78" fill="#F8FAFC" letter-spacing="4">
+      JMKT
+    </text>
+    
+    <!-- Subtitle -->
+    <text x="256" y="440" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif" font-weight="700" font-size="28" fill="#94A3B8" letter-spacing="6">
+      BILLING
+    </text>
+  </g>
+</svg>

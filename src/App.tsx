@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { InvoiceData } from './types/invoice';
-import type { LedgerInvoice } from './types/ledger';
+import type { LedgerInvoice, SavedParty, SavedArticle } from './types/ledger';
 import { initialInvoiceData, sampleInvoiceData } from './utils/defaultData';
 import { InvoiceForm } from './components/InvoiceForm';
 import { MobileInvoiceForm } from './components/MobileInvoiceForm';
@@ -12,19 +12,24 @@ import { LedgerView } from './components/LedgerView';
 import { exportToPdf } from './utils/pdfExport';
 import { calculateInvoiceTotals } from './utils/calculator';
 import { ledgerService } from './services/ledgerService';
+import { directoryService } from './services/directoryService';
+import { suggestionsService } from './services/suggestionsService';
+import { getNextSuggestedInvoiceNo, incrementInvoiceNumber } from './utils/invoiceNumber';
+import { shareBillViaWhatsApp } from './utils/whatsapp';
 import { supabase, isDatabaseConfigured } from './lib/supabase';
-import { checkRateLimit, sanitizeInvoicePayload, maskDatabaseError } from './utils/security';
+import { checkRateLimit, sanitizeInvoicePayload, maskDatabaseError, validateInvoiceData } from './utils/security';
 import { 
   Check, 
   FileText, 
   BookOpen, 
   Lock, 
   Sun, 
-  Moon,
+  Moon, 
   AlertTriangle,
 } from 'lucide-react';
 
 const LOCAL_STORAGE_KEY = 'jmkt_invoice_data_v3';
+const SESSION_STORAGE_KEY = 'jmkt_invoice_draft_session_v1';
 const THEME_STORAGE_KEY = 'jmkt_theme_preference_v1';
 const AUTH_SESSION_KEY = 'jmkt_auth_session';
 
@@ -44,27 +49,103 @@ export function App() {
     return false;
   });
 
+  // Verify stored session token with server API on startup
+  useEffect(() => {
+    const raw = localStorage.getItem(AUTH_SESSION_KEY);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.token) {
+        fetch('/api/auth/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: parsed.token }),
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.valid === false) {
+              localStorage.removeItem(AUTH_SESSION_KEY);
+              setIsAuthenticated(false);
+            }
+          })
+          .catch(() => {
+            // If offline, rely on local expiresAt timestamp
+          });
+      }
+    } catch {
+      // Ignore
+    }
+  }, []);
+
   // 2. Tab Navigation: 'create' (Bill Generator) or 'ledger' (Khata / Accounts)
   const [activeTab, setActiveTab] = useState<'create' | 'ledger'>('create');
 
-  // 3. Invoice Generator Data
+  // 3. Invoice Generator Data with Dual Storage (Session draft protection + LocalStorage)
   const [data, setData] = useState<InvoiceData>(() => {
     try {
+      // Check session storage first for uncommitted active draft
+      const sessionDraft = sessionStorage.getItem(SESSION_STORAGE_KEY);
+      if (sessionDraft) return JSON.parse(sessionDraft);
+
+      // Fallback to local storage
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (saved) return JSON.parse(saved);
     } catch (e) {
-      console.error('Failed to load local storage:', e);
+      console.error('Failed to load storage draft:', e);
     }
     return initialInvoiceData;
   });
 
+  // Prevent accidental navigation/refresh if there is active draft work on Create Bill tab
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (activeTab === 'create') {
+        const hasDraftWork = 
+          Boolean(data.buyer.buyerName?.trim()) || 
+          data.items.some(item => (Number(item.quantity) > 0 && Number(item.unitPrice) > 0) || Boolean(item.description?.trim()));
+        if (hasDraftWork) {
+          e.preventDefault();
+          e.returnValue = '';
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [activeTab, data]);
+
   // 4. Ledger Invoices & Active Edit Tracking
-  const [ledgerInvoices, setLedgerInvoices] = useState<LedgerInvoice[]>([]);
+  const [ledgerInvoices, setLedgerInvoices] = useState<LedgerInvoice[]>(() => {
+    return ledgerService.getLocalLedger();
+  });
   const [editingLedgerId, setEditingLedgerId] = useState<string | null>(null);
   const [reDownloadingInvoice, setReDownloadingInvoice] = useState<LedgerInvoice | null>(null);
   const [downloadingLedgerId, setDownloadingLedgerId] = useState<string | null>(null);
 
-  // 5. Persistent Theme Preference
+  // 5. Party Directory & Articles Catalog State
+  const [parties, setParties] = useState<SavedParty[]>([]);
+  const [articles, setArticles] = useState<SavedArticle[]>([]);
+
+  const refreshDirectory = async () => {
+    try {
+      const [pList, aList] = await Promise.all([
+        directoryService.getParties(),
+        directoryService.getArticles(),
+      ]);
+      setParties(pList);
+      setArticles(aList);
+    } catch {
+      // Ignore
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      refreshDirectory();
+    }
+  }, [isAuthenticated]);
+
+  // 6. Persistent Theme Preference
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try {
       const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
@@ -79,9 +160,10 @@ export function App() {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // 3. Fetch live rows directly from database with anti-spam rate limiting
+  // 7. Fetch live rows directly from database with anti-spam rate limiting
   const fetchLedger = async () => {
     if (!isDatabaseConfigured) {
+      setLedgerInvoices(ledgerService.getLocalLedger());
       return;
     }
 
@@ -91,16 +173,8 @@ export function App() {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('invoices_ledger')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        return;
-      }
-
-      setLedgerInvoices((data as LedgerInvoice[]) || []);
+      const invoices = await ledgerService.getAllInvoices();
+      setLedgerInvoices(invoices);
     } catch {
       // Quiet recovery
     }
@@ -112,13 +186,31 @@ export function App() {
     }
   }, [isAuthenticated, activeTab]);
 
+  // Synchronize active draft in real-time to both localStorage and sessionStorage
   useEffect(() => {
     try {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+      sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(data));
     } catch (e) {
-      console.error('Failed to save to local storage:', e);
+      console.error('Failed to save to storage:', e);
     }
   }, [data]);
+
+  // Auto-Increment Sequential Invoice Number on initial empty load
+  useEffect(() => {
+    if (!editingLedgerId && (!data.meta.invoiceNo || data.meta.invoiceNo === '')) {
+      const nextNo = getNextSuggestedInvoiceNo(ledgerInvoices);
+      if (nextNo) {
+        setData((prev) => ({
+          ...prev,
+          meta: {
+            ...prev.meta,
+            invoiceNo: nextNo,
+          },
+        }));
+      }
+    }
+  }, [ledgerInvoices, editingLedgerId, data.meta.invoiceNo]);
 
   // Synchronize theme with <html> class and localStorage
   useEffect(() => {
@@ -160,10 +252,18 @@ export function App() {
 
   const handleClearAll = () => {
     if (window.confirm('Clear all form fields?')) {
-      setData({
-        buyer: { buyerName: '', buyerAddress: '', gstinUin: 'Unregistered', accountNo: '', stateAndCode: 'West Bengal (19)' },
+      const nextNo = getNextSuggestedInvoiceNo(ledgerInvoices);
+      const cleanData: InvoiceData = {
+        buyer: { 
+          buyerName: '', 
+          phone: '', 
+          buyerAddress: '', 
+          gstinUin: 'Unregistered', 
+          accountNo: '', 
+          stateAndCode: 'West Bengal (19)' 
+        },
         meta: {
-          invoiceNo: '',
+          invoiceNo: nextNo,
           dated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-'),
           placeOfSupply: 'West Bengal (19)',
           termsOfPayment: 'Immediate / Against Delivery',
@@ -173,9 +273,15 @@ export function App() {
         items: [{ id: '1', hsnCode: '64041990', description: '', colorSpec: '', quantity: 0, mrp: 0, unitPrice: 0, discount: '—' }],
         charges: { packingCharge: 0 },
         signatoryName: 'Ujjal Saha',
-      });
+      };
+      setData(cleanData);
       setEditingLedgerId(null);
-      showToast('All fields cleared');
+      try {
+        sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      } catch {
+        // Ignore
+      }
+      showToast('All fields cleared — sequential invoice assigned');
     }
   };
 
@@ -199,8 +305,208 @@ export function App() {
     showToast('New item added');
   };
 
-  // 1. "Download PDF Only" — Never writes to database
+  // Helper to persist new party, articles, and repeating suggestions from an active bill
+  const recordAllNewInvoiceData = async (invData: InvoiceData) => {
+    try {
+      await Promise.all([
+        directoryService.upsertPartyFromInvoice(invData),
+        directoryService.upsertArticlesFromInvoice(invData.items),
+      ]);
+      suggestionsService.recordInvoiceEntries(invData);
+      refreshDirectory();
+    } catch {
+      // Quiet
+    }
+  };
+
+  // Helper: Saves current bill to database (Supabase / local cache) and updates party & article directories
+  const saveInvoiceToDatabase = async (): Promise<boolean> => {
+    const validation = validateInvoiceData(data);
+    if (!validation.valid) {
+      alert(validation.error);
+      return false;
+    }
+
+    // Anti-DDoS / Request flood guard
+    const rateCheck = checkRateLimit('save_bill', 3, 10000);
+    if (!rateCheck.allowed) {
+      alert(`Too many requests. Please wait ${rateCheck.waitSeconds}s before trying again.`);
+      return false;
+    }
+
+    try {
+      const calcs = calculateInvoiceTotals(data);
+      
+      // Auto-save buyer, articles, and all repeating fields into the system
+      await recordAllNewInvoiceData(data);
+
+      const existingInv = editingLedgerId 
+        ? ledgerInvoices.find(i => i.id === editingLedgerId) 
+        : null;
+
+      const paidAmount = existingInv ? (Number(existingInv.amount_paid) || 0) : 0;
+      const balanceDue = Math.max(0, calcs.grandTotal - paidAmount);
+      let status: 'pending' | 'partial' | 'paid' = 'pending';
+      if (balanceDue <= 0 && calcs.grandTotal > 0) {
+        status = 'paid';
+      } else if (paidAmount > 0) {
+        status = 'partial';
+      }
+
+      const rawPayload = {
+        invoice_no: data.meta.invoiceNo || 'DRAFT-' + Date.now().toString().slice(-4),
+        invoice_date: data.meta.dated || new Date().toISOString().split('T')[0],
+        buyer_name: data.buyer.buyerName || 'Unregistered Buyer',
+        buyer_address: data.buyer.buyerAddress || '',
+        buyer_gstin: data.buyer.gstinUin || 'Unregistered',
+        account_no: data.buyer.accountNo || '',
+        party_phone: data.buyer.phone || '',
+        place_of_supply: data.meta.placeOfSupply || 'West Bengal (19)',
+        dispatch_mode: data.meta.dispatchMode || 'Local Road Transport',
+        terms: data.meta.termsOfPayment || 'Immediate / Against Delivery',
+        copy_badge: data.meta.copyType || 'ORIGINAL FOR RECIPIENT',
+        items: data.items,
+        total_pairs: calcs.totalQuantity,
+        taxable_value: calcs.totalTaxableValue,
+        packing_charge: calcs.packingCharge,
+        cgst: calcs.cgst,
+        sgst: calcs.sgst,
+        round_off: calcs.roundOff,
+        grand_total: calcs.grandTotal,
+        amount_paid: paidAmount,
+        balance_due: balanceDue,
+        payment_status: status,
+        notes: '',
+      };
+
+      // Sanitize against XSS, ReDoS, and buffer overflow attacks
+      const invoicePayload = sanitizeInvoicePayload(rawPayload);
+
+      if (isDatabaseConfigured) {
+        if (editingLedgerId) {
+          const { error: updateError } = await supabase
+            .from('invoices_ledger')
+            .update(invoicePayload)
+            .eq('id', editingLedgerId)
+            .select();
+
+          if (updateError) {
+            alert("Database Error: " + maskDatabaseError(updateError));
+            return false;
+          }
+
+          setEditingLedgerId(null);
+          showToast('Ledger updated successfully');
+        } else {
+          const { error: insertError } = await supabase
+            .from('invoices_ledger')
+            .insert([invoicePayload])
+            .select();
+
+          if (insertError) {
+            alert("Database Error: " + maskDatabaseError(insertError));
+            return false;
+          }
+
+          showToast('Bill saved to ledger successfully');
+        }
+      } else {
+        // Offline local fallback
+        const local = ledgerService.getLocalLedger();
+        if (editingLedgerId) {
+          const idx = local.findIndex(i => i.id === editingLedgerId);
+          if (idx >= 0) {
+            local[idx] = { ...local[idx], ...invoicePayload, updated_at: new Date().toISOString() };
+            ledgerService.setLocalLedger(local);
+          }
+          setEditingLedgerId(null);
+        } else {
+          const newEntry: LedgerInvoice = {
+            id: 'local-' + Date.now(),
+            ...invoicePayload,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          ledgerService.setLocalLedger([newEntry, ...local]);
+        }
+        showToast('Bill saved to local ledger');
+      }
+
+      // Re-fetch live rows from database
+      await fetchLedger();
+      return true;
+    } catch (err) {
+      showToast('Unable to connect to database. Please check your internet connection.');
+      alert("Database Error: " + maskDatabaseError(err));
+      return false;
+    }
+  };
+
+  // 1. "Share via WhatsApp Only" — Directly shares without writing to database
+  const handleShareWhatsAppOnly = async () => {
+    const validation = validateInvoiceData(data);
+    if (!validation.valid) {
+      alert(validation.error);
+      return;
+    }
+
+    // Auto-record new party, articles, and repeating fields for next bills
+    await recordAllNewInvoiceData(data);
+
+    const calcs = calculateInvoiceTotals(data);
+    showToast('Opening WhatsApp...');
+    await shareBillViaWhatsApp({
+      invoiceNo: data.meta.invoiceNo || 'INV',
+      invoiceDate: data.meta.dated || new Date().toISOString().split('T')[0],
+      buyerName: data.buyer.buyerName || 'Buyer',
+      phone: data.buyer.phone,
+      totalPairs: calcs.totalQuantity,
+      grandTotal: calcs.grandTotal,
+      paymentStatus: 'pending',
+    });
+  };
+
+  // 2. "Share to WhatsApp & Save to Ledger" — Logs record to database and opens WhatsApp
+  const handleShareWhatsAppAndSave = async () => {
+    const currentData = { ...data };
+    const calcs = calculateInvoiceTotals(currentData);
+
+    showToast('Saving to ledger & opening WhatsApp...');
+    const saved = await saveInvoiceToDatabase();
+    if (!saved) return;
+
+    await shareBillViaWhatsApp({
+      invoiceNo: currentData.meta.invoiceNo || 'INV',
+      invoiceDate: currentData.meta.dated || new Date().toISOString().split('T')[0],
+      buyerName: currentData.buyer.buyerName || 'Buyer',
+      phone: currentData.buyer.phone,
+      totalPairs: calcs.totalQuantity,
+      grandTotal: calcs.grandTotal,
+      paymentStatus: 'pending',
+    });
+
+    // Auto-Increment Sequential Invoice Number for next bill
+    const nextNo = incrementInvoiceNumber(currentData.meta.invoiceNo);
+    setData((prev) => ({
+      ...prev,
+      meta: {
+        ...prev.meta,
+        invoiceNo: nextNo,
+      },
+    }));
+  };
+
+  // 3. "Download PDF Only" — Never writes to database
   const handleDownloadPdfOnly = async () => {
+    const validation = validateInvoiceData(data);
+    if (!validation.valid) {
+      alert(validation.error);
+      return;
+    }
+
+    // Auto-record new party, articles, and repeating fields for next bills
+    await recordAllNewInvoiceData(data);
+
     setIsGeneratingPdf(true);
     showToast('Generating high-res PDF...');
     try {
@@ -216,89 +522,36 @@ export function App() {
     }
   };
 
-  // 2. "Save to Ledger & Download" — Logs record into database & generates PDF
+  // 4. "Save to Ledger & Download" — Logs record into database & generates PDF
   const handleSaveToLedgerAndDownload = async () => {
     if (isGeneratingPdf) return;
-
-    // Anti-DDoS / Request flood guard
-    const rateCheck = checkRateLimit('save_bill', 3, 10000);
-    if (!rateCheck.allowed) {
-      alert(`Too many requests. Please wait ${rateCheck.waitSeconds}s before trying again.`);
-      return;
-    }
-
-    if (!isDatabaseConfigured) {
-      alert("Database connection not detected.\n\nPlease check your environment configuration to enable cloud ledger syncing.");
-      return;
-    }
 
     setIsGeneratingPdf(true);
     showToast('Saving to database & generating PDF...');
 
     try {
-      const calcs = calculateInvoiceTotals(data);
-      const rawPayload = {
-        invoice_no: data.meta.invoiceNo || 'DRAFT-' + Date.now().toString().slice(-4),
-        invoice_date: data.meta.dated || new Date().toISOString().split('T')[0],
-        buyer_name: data.buyer.buyerName || 'Unregistered Buyer',
-        buyer_address: data.buyer.buyerAddress || '',
-        buyer_gstin: data.buyer.gstinUin || 'Unregistered',
-        account_no: data.buyer.accountNo || '',
-        place_of_supply: data.meta.placeOfSupply || 'West Bengal (19)',
-        dispatch_mode: data.meta.dispatchMode || 'Local Road Transport',
-        terms: data.meta.termsOfPayment || 'Immediate / Against Delivery',
-        copy_badge: data.meta.copyType || 'ORIGINAL FOR RECIPIENT',
-        items: data.items,
-        total_pairs: calcs.totalQuantity,
-        taxable_value: calcs.totalTaxableValue,
-        packing_charge: calcs.packingCharge,
-        cgst: calcs.cgst,
-        sgst: calcs.sgst,
-        round_off: calcs.roundOff,
-        grand_total: calcs.grandTotal,
-        payment_status: 'pending',
-        notes: '',
-      };
-
-      // Sanitize against XSS, ReDoS, and buffer overflow attacks
-      const invoicePayload = sanitizeInvoicePayload(rawPayload);
-
-      if (editingLedgerId) {
-        const { error: updateError } = await supabase
-          .from('invoices_ledger')
-          .update(invoicePayload)
-          .eq('id', editingLedgerId)
-          .select();
-
-        if (updateError) {
-          alert("Database Error: " + maskDatabaseError(updateError));
-          return;
-        }
-
-        setEditingLedgerId(null);
-      } else {
-        const { error: insertError } = await supabase
-          .from('invoices_ledger')
-          .insert([invoicePayload])
-          .select();
-
-        if (insertError) {
-          alert("Database Error: " + maskDatabaseError(insertError));
-          return;
-        }
-      }
-
-      // Re-fetch live rows from database
-      await fetchLedger();
+      const saved = await saveInvoiceToDatabase();
+      if (!saved) return;
 
       // Download PDF
       const cleanInvoiceNo = (data.meta.invoiceNo || 'INV').replace(/[/\\?%*:|"<>]/g, '_');
       const cleanBuyer = (data.buyer.buyerName || 'Buyer').trim().replace(/\s+/g, '_').replace(/[/\\?%*:|"<>]/g, '');
       await exportToPdf('printable-invoice', `Invoice_${cleanInvoiceNo}_${cleanBuyer}`);
 
-      showToast('Saved to database & PDF downloaded successfully!');
+      showToast('PDF downloaded successfully');
+
+      // Auto-Increment Sequential Invoice Number for next bill
+      const nextNo = incrementInvoiceNumber(data.meta.invoiceNo);
+      setData((prev) => ({
+        ...prev,
+        meta: {
+          ...prev.meta,
+          invoiceNo: nextNo,
+        },
+      }));
     } catch (err) {
-      alert("Database Error: " + maskDatabaseError(err));
+      console.error('PDF error:', err);
+      showToast('PDF export failed. Please try again.');
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -312,28 +565,45 @@ export function App() {
       return;
     }
 
-    if (!isDatabaseConfigured) {
-      alert("Database connection not detected");
-      return;
-    }
-
     const currentInv = ledgerInvoices.find(inv => inv.id === id);
     const resolvedStatus = currentStatus || currentInv?.payment_status || 'pending';
     const newStatus: 'pending' | 'paid' = resolvedStatus === 'paid' ? 'pending' : 'paid';
     const now = new Date().toISOString();
 
-    const { error } = await supabase
-      .from('invoices_ledger')
-      .update({
-        payment_status: newStatus,
-        payment_date: newStatus === 'paid' ? now : null,
-        updated_at: now,
-      })
-      .eq('id', id);
+    const grandTotal = Number(currentInv?.grand_total) || 0;
+    const newAmountPaid = newStatus === 'paid' ? grandTotal : 0;
+    const newBalanceDue = newStatus === 'paid' ? 0 : grandTotal;
 
-    if (error) {
-      alert("Database Error: " + maskDatabaseError(error));
-      return;
+    if (isDatabaseConfigured) {
+      const { error } = await supabase
+        .from('invoices_ledger')
+        .update({
+          payment_status: newStatus,
+          payment_date: newStatus === 'paid' ? now : null,
+          amount_paid: newAmountPaid,
+          balance_due: newBalanceDue,
+          updated_at: now,
+        })
+        .eq('id', id);
+
+      if (error) {
+        alert("Database Error: " + maskDatabaseError(error));
+        return;
+      }
+    } else {
+      const local = ledgerService.getLocalLedger();
+      const idx = local.findIndex(i => i.id === id);
+      if (idx >= 0) {
+        local[idx] = {
+          ...local[idx],
+          payment_status: newStatus,
+          payment_date: newStatus === 'paid' ? now : null,
+          amount_paid: newAmountPaid,
+          balance_due: newBalanceDue,
+          updated_at: now,
+        };
+        ledgerService.setLocalLedger(local);
+      }
     }
 
     showToast(`Invoice marked as ${newStatus.toUpperCase()}`);
@@ -360,27 +630,32 @@ export function App() {
       return;
     }
 
-    if (!isDatabaseConfigured) {
-      alert("Database connection not detected");
-      return;
-    }
-
     if (!window.confirm(`Are you sure you want to delete Invoice #${invoiceNo}?`)) {
       return;
     }
 
-    const { error } = await supabase
-      .from('invoices_ledger')
-      .delete()
-      .eq('id', id);
+    if (isDatabaseConfigured) {
+      const { error } = await supabase
+        .from('invoices_ledger')
+        .delete()
+        .eq('id', id);
 
-    if (error) {
-      alert("Database Error: " + maskDatabaseError(error));
-      return;
+      if (error) {
+        alert("Database Error: " + maskDatabaseError(error));
+        return;
+      }
+    } else {
+      const local = ledgerService.getLocalLedger();
+      ledgerService.setLocalLedger(local.filter(i => i.id !== id));
     }
 
     if (editingLedgerId === id) setEditingLedgerId(null);
     showToast(`Invoice #${invoiceNo} deleted from ledger.`);
+    await fetchLedger();
+  };
+
+  const handlePaymentRecorded = async (updatedInvoice: LedgerInvoice) => {
+    showToast(`Payment recorded for #${updatedInvoice.invoice_no}`);
     await fetchLedger();
   };
 
@@ -461,9 +736,9 @@ export function App() {
             >
               <BookOpen className="w-3.5 h-3.5" />
               <span>Khata / Ledger</span>
-              {ledgerStats.pendingCount > 0 && (
+              {(ledgerStats.pendingCount + ledgerStats.partialCount) > 0 && (
                 <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-rose-500 text-white leading-tight">
-                  {ledgerStats.pendingCount}
+                  {ledgerStats.pendingCount + ledgerStats.partialCount}
                 </span>
               )}
             </button>
@@ -520,12 +795,12 @@ export function App() {
                   Database connection not detected
                 </p>
                 <p className="text-[11px] sm:text-xs text-amber-800 dark:text-amber-300 mt-0.5">
-                  Configure database credentials in your environment file to enable live cloud ledger syncing across devices.
+                  Offline storage active. Configure database credentials in your environment file to sync records across devices.
                 </p>
               </div>
             </div>
             <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold uppercase bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 shrink-0 border border-amber-300/80 dark:border-amber-800">
-              Disconnected
+              Offline Cache
             </span>
           </div>
         )}
@@ -541,12 +816,17 @@ export function App() {
                 onClearAll={handleClearAll}
                 onDownloadPdf={handleDownloadPdfOnly}
                 onSaveToLedgerAndDownload={handleSaveToLedgerAndDownload}
+                onShareWhatsAppAndSave={handleShareWhatsAppAndSave}
+                onShareWhatsAppOnly={handleShareWhatsAppOnly}
+                onShareWhatsApp={handleShareWhatsAppOnly}
                 onPreview={() => setIsPreviewOpen(true)}
                 isGeneratingPdf={isGeneratingPdf}
                 theme={theme}
                 onToggleTheme={toggleTheme}
                 editingLedgerId={editingLedgerId}
                 onCancelEdit={handleCancelEdit}
+                parties={parties}
+                articles={articles}
               />
             </div>
 
@@ -559,12 +839,17 @@ export function App() {
                 onClearAll={handleClearAll}
                 onDownloadPdf={handleDownloadPdfOnly}
                 onSaveToLedgerAndDownload={handleSaveToLedgerAndDownload}
+                onShareWhatsAppAndSave={handleShareWhatsAppAndSave}
+                onShareWhatsAppOnly={handleShareWhatsAppOnly}
+                onShareWhatsApp={handleShareWhatsAppOnly}
                 onPreview={() => setIsPreviewOpen(true)}
                 isGeneratingPdf={isGeneratingPdf}
                 theme={theme}
                 onToggleTheme={toggleTheme}
                 editingLedgerId={editingLedgerId}
                 onCancelEdit={handleCancelEdit}
+                parties={parties}
+                articles={articles}
               />
             </div>
           </>
@@ -579,6 +864,8 @@ export function App() {
             onDeleteInvoice={handleDeleteLedgerInvoice}
             onNavigateToCreate={() => setActiveTab('create')}
             onRefresh={fetchLedger}
+            onExportCsv={(filename) => showToast(`Ledger exported: ${filename}`)}
+            onPaymentRecorded={handlePaymentRecorded}
             isDownloadingId={downloadingLedgerId}
             isDatabaseConnected={isDatabaseConfigured}
           />
@@ -615,6 +902,9 @@ export function App() {
           grandTotal={calcs.grandTotal}
           onDownloadPdf={handleDownloadPdfOnly}
           onSaveToLedgerAndDownload={handleSaveToLedgerAndDownload}
+          onShareWhatsAppAndSave={handleShareWhatsAppAndSave}
+          onShareWhatsAppOnly={handleShareWhatsAppOnly}
+          onShareWhatsApp={handleShareWhatsAppOnly}
           onPreview={() => setIsPreviewOpen(true)}
           onAddItem={handleAddItem}
           isGeneratingPdf={isGeneratingPdf}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Lock, Delete, ShieldCheck, Sun, Moon, AlertTriangle } from 'lucide-react';
+import { Lock, Delete, ShieldCheck, Sun, Moon, AlertTriangle, Loader2 } from 'lucide-react';
 
 interface PinLockScreenProps {
   onUnlock: () => void;
@@ -8,7 +8,7 @@ interface PinLockScreenProps {
 }
 
 const MAX_FAILED_ATTEMPTS = 5;
-const LOCKOUT_DURATION_MS = 60 * 1000; // 60 seconds
+const LOCKOUT_DURATION_MS = 30 * 1000; // 30 seconds
 const PIN_SECURITY_KEY = 'jmkt_pin_sec_v1';
 
 function getPinSecurityState(): { attempts: number; lockoutUntil: number | null } {
@@ -21,7 +21,7 @@ function getPinSecurityState(): { attempts: number; lockoutUntil: number | null 
         lockoutUntil: parsed.lockoutUntil ? Number(parsed.lockoutUntil) : null,
       };
     }
-  } catch (e) {
+  } catch {
     // Ignore storage parse issues
   }
   return { attempts: 0, lockoutUntil: null };
@@ -30,7 +30,7 @@ function getPinSecurityState(): { attempts: number; lockoutUntil: number | null 
 function savePinSecurityState(state: { attempts: number; lockoutUntil: number | null }) {
   try {
     localStorage.setItem(PIN_SECURITY_KEY, JSON.stringify(state));
-  } catch (e) {
+  } catch {
     // Ignore storage write issues
   }
 }
@@ -43,6 +43,7 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({
   const [pin, setPin] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [isShaking, setIsShaking] = useState<boolean>(false);
+  const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [securityState, setSecurityState] = useState(getPinSecurityState);
   const [lockoutRemaining, setLockoutRemaining] = useState<number>(() => {
     const init = getPinSecurityState();
@@ -51,12 +52,6 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({
     }
     return 0;
   });
-
-  // Retrieve Master PIN from environment or fallback default '2026'
-  const masterPin = 
-    (import.meta as any).env?.VITE_APP_PIN || 
-    (import.meta as any).env?.NEXT_PUBLIC_APP_PIN || 
-    '2026';
 
   // Live countdown timer for DDoS / brute-force lockout
   useEffect(() => {
@@ -78,51 +73,82 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({
     return () => clearInterval(interval);
   }, [securityState.lockoutUntil]);
 
-  const verifyPin = useCallback((currentPin: string) => {
-    if (lockoutRemaining > 0) return;
+  const verifyPin = useCallback(async (currentPin: string) => {
+    if (lockoutRemaining > 0 || isVerifying) return;
+    setIsVerifying(true);
 
-    if (currentPin === masterPin) {
-      // Clear security lockout upon successful authorized entry
-      const clearState = { attempts: 0, lockoutUntil: null };
-      savePinSecurityState(clearState);
-      setSecurityState(clearState);
+    try {
+      const response = await fetch('/api/auth/pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: currentPin }),
+      });
 
-      // 30-day session persistence
-      const sessionData = {
-        authenticated: true,
-        expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days
-        timestamp: new Date().toISOString(),
-      };
-      localStorage.setItem('jmkt_auth_session', JSON.stringify(sessionData));
-      onUnlock();
-    } else {
-      const nextAttempts = securityState.attempts + 1;
-      setIsShaking(true);
+      const data = await response.json();
 
-      if (nextAttempts >= MAX_FAILED_ATTEMPTS) {
-        const lockoutUntil = Date.now() + LOCKOUT_DURATION_MS;
-        const lockState = { attempts: nextAttempts, lockoutUntil };
-        savePinSecurityState(lockState);
-        setSecurityState(lockState);
-        setLockoutRemaining(60);
-        setError('Security lockout active: 5 failed attempts.');
+      if (response.ok && data.success) {
+        // Clear security lockout upon successful authorized entry
+        const clearState = { attempts: 0, lockoutUntil: null };
+        savePinSecurityState(clearState);
+        setSecurityState(clearState);
+
+        // 30-day session persistence with verified token
+        const sessionData = {
+          authenticated: true,
+          token: data.token,
+          expiresAt: data.expiresAt || (Date.now() + 30 * 24 * 60 * 60 * 1000),
+          timestamp: new Date().toISOString(),
+        };
+        localStorage.setItem('jmkt_auth_session', JSON.stringify(sessionData));
+        onUnlock();
       } else {
-        const state = { attempts: nextAttempts, lockoutUntil: null };
-        savePinSecurityState(state);
-        setSecurityState(state);
-        const remaining = MAX_FAILED_ATTEMPTS - nextAttempts;
-        setError(`Incorrect Master PIN (${remaining} ${remaining === 1 ? 'attempt' : 'attempts'} left)`);
-      }
+        setIsShaking(true);
 
+        if (response.status === 429) {
+          const waitSecs = data.retryAfter || 30;
+          const lockoutUntil = Date.now() + waitSecs * 1000;
+          const lockState = { attempts: MAX_FAILED_ATTEMPTS, lockoutUntil };
+          savePinSecurityState(lockState);
+          setSecurityState(lockState);
+          setLockoutRemaining(waitSecs);
+          setError(data.error || `Keypad locked for ${waitSecs}s.`);
+        } else {
+          const nextAttempts = securityState.attempts + 1;
+          if (nextAttempts >= MAX_FAILED_ATTEMPTS) {
+            const lockoutUntil = Date.now() + LOCKOUT_DURATION_MS;
+            const lockState = { attempts: nextAttempts, lockoutUntil };
+            savePinSecurityState(lockState);
+            setSecurityState(lockState);
+            setLockoutRemaining(30);
+            setError('Security lockout active: 5 failed attempts (30s).');
+          } else {
+            const state = { attempts: nextAttempts, lockoutUntil: null };
+            savePinSecurityState(state);
+            setSecurityState(state);
+            const remaining = MAX_FAILED_ATTEMPTS - nextAttempts;
+            setError(data.error || `Incorrect Master PIN (${remaining} ${remaining === 1 ? 'attempt' : 'attempts'} left)`);
+          }
+        }
+
+        setTimeout(() => {
+          setIsShaking(false);
+          setPin('');
+        }, 500);
+      }
+    } catch {
+      setError('Authentication server unavailable. Please try again.');
+      setIsShaking(true);
       setTimeout(() => {
         setIsShaking(false);
         setPin('');
       }, 500);
+    } finally {
+      setIsVerifying(false);
     }
-  }, [masterPin, onUnlock, lockoutRemaining, securityState.attempts]);
+  }, [onUnlock, lockoutRemaining, isVerifying, securityState.attempts]);
 
-  const handleKeyPress = (digit: string) => {
-    if (lockoutRemaining > 0) return;
+  const handleKeyPress = useCallback((digit: string) => {
+    if (lockoutRemaining > 0 || isVerifying) return;
     if (pin.length >= 4) return;
     setError(null);
     const nextPin = pin + digit;
@@ -132,24 +158,24 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({
         verifyPin(nextPin);
       }, 100);
     }
-  };
+  }, [lockoutRemaining, isVerifying, pin, verifyPin]);
 
-  const handleDelete = () => {
-    if (lockoutRemaining > 0) return;
+  const handleDelete = useCallback(() => {
+    if (lockoutRemaining > 0 || isVerifying) return;
     setError(null);
     setPin(prev => prev.slice(0, -1));
-  };
+  }, [lockoutRemaining, isVerifying]);
 
-  const handleClear = () => {
-    if (lockoutRemaining > 0) return;
+  const handleClear = useCallback(() => {
+    if (lockoutRemaining > 0 || isVerifying) return;
     setError(null);
     setPin('');
-  };
+  }, [lockoutRemaining, isVerifying]);
 
   // Keyboard navigation support for desktop
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (lockoutRemaining > 0) return;
+      if (lockoutRemaining > 0 || isVerifying) return;
       if (e.key >= '0' && e.key <= '9') {
         handleKeyPress(e.key);
       } else if (e.key === 'Backspace') {
@@ -161,7 +187,7 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [pin, lockoutRemaining]);
+  }, [lockoutRemaining, isVerifying, handleKeyPress, handleDelete, handleClear]);
 
   const isLockedOut = lockoutRemaining > 0;
 
@@ -199,7 +225,9 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({
         {/* Shield / Lock Icon */}
         <div className="relative mb-5">
           <div className={`w-16 h-16 rounded-2xl ${isLockedOut ? 'bg-rose-600 dark:bg-rose-500' : 'bg-neutral-900 dark:bg-white'} text-white dark:text-neutral-900 flex items-center justify-center shadow-md transition-colors duration-300`}>
-            {isLockedOut ? (
+            {isVerifying ? (
+              <Loader2 className="w-7 h-7 text-white animate-spin" />
+            ) : isLockedOut ? (
               <AlertTriangle className="w-7 h-7 text-white" />
             ) : (
               <Lock className="w-7 h-7" />
@@ -214,7 +242,7 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({
           {isLockedOut ? 'Access Temporarily Locked' : 'Enter Master PIN'}
         </h2>
         <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 mb-6 text-center">
-          {isLockedOut ? 'Anti-brute-force rate limiter activated' : 'Authorized Accounts & Billing Access'}
+          {isLockedOut ? 'Anti-brute-force lockout active (30s cooldown)' : 'Authorized Accounts & Billing Access'}
         </p>
 
         {/* 4-Digit Indicator Dots */}
@@ -238,7 +266,11 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({
 
         {/* Error message or subtle hint */}
         <div className="min-h-6 flex items-center justify-center mb-4 text-center px-2">
-          {isLockedOut ? (
+          {isVerifying ? (
+            <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400 flex items-center gap-1.5">
+              <Loader2 className="w-3 h-3 animate-spin" /> Verifying credentials...
+            </span>
+          ) : isLockedOut ? (
             <span className="text-xs font-semibold text-rose-600 dark:text-rose-400 animate-pulse">
               Locked for security. Retry in {lockoutRemaining}s
             </span>
@@ -254,12 +286,12 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({
         </div>
 
         {/* Mobile Tactile Numpad Grid */}
-        <div className={`w-full max-w-[280px] grid grid-cols-3 gap-3 ${isLockedOut ? 'opacity-40 pointer-events-none' : ''}`}>
+        <div className={`w-full max-w-[280px] grid grid-cols-3 gap-3 ${isLockedOut || isVerifying ? 'opacity-40 pointer-events-none' : ''}`}>
           {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(num => (
             <button
               key={num}
               type="button"
-              disabled={isLockedOut}
+              disabled={isLockedOut || isVerifying}
               onClick={() => handleKeyPress(num)}
               className="depth-btn-secondary h-16 rounded-2xl text-xl font-semibold font-mono flex items-center justify-center active:scale-95 transition-transform disabled:cursor-not-allowed"
             >
@@ -270,7 +302,7 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({
           {/* Bottom row: Clear, 0, Backspace */}
           <button
             type="button"
-            disabled={isLockedOut}
+            disabled={isLockedOut || isVerifying}
             onClick={handleClear}
             className="h-16 rounded-2xl text-xs font-semibold text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 flex items-center justify-center active:scale-95 transition-transform disabled:cursor-not-allowed"
           >
@@ -279,7 +311,7 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({
 
           <button
             type="button"
-            disabled={isLockedOut}
+            disabled={isLockedOut || isVerifying}
             onClick={() => handleKeyPress('0')}
             className="depth-btn-secondary h-16 rounded-2xl text-xl font-semibold font-mono flex items-center justify-center active:scale-95 transition-transform disabled:cursor-not-allowed"
           >
@@ -288,7 +320,7 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({
 
           <button
             type="button"
-            disabled={isLockedOut}
+            disabled={isLockedOut || isVerifying}
             onClick={handleDelete}
             className="h-16 rounded-2xl text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100 flex items-center justify-center active:scale-95 transition-transform disabled:cursor-not-allowed"
             title="Delete last digit"
